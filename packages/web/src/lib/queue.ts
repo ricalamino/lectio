@@ -1,0 +1,31 @@
+import PgBoss from "pg-boss";
+import { env } from "./env";
+
+export const JOB_ENRICH = "enrich_capture";
+export const JOB_CONNECT = "generate_connections";
+
+export interface EnrichJobData {
+  captureId: string;
+}
+export interface ConnectJobData {
+  captureId: string;
+}
+
+let cached: Promise<PgBoss> | null = null;
+
+function start(): Promise<PgBoss> {
+  if (cached) return cached;
+  const boss = new PgBoss({ connectionString: env().DATABASE_URL });
+  cached = boss.start().then(() => boss);
+  return cached;
+}
+
+export async function publishEnrich(data: EnrichJobData): Promise<string | null> {
+  const boss = await start();
+  return boss.send(JOB_ENRICH, data, { retryLimit: 5, retryBackoff: true });
+}
+
+export async function publishConnect(data: ConnectJobData): Promise<string | null> {
+  const boss = await start();
+  return boss.send(JOB_CONNECT, data, { retryLimit: 5, retryBackoff: true });
+}

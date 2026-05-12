@@ -1,0 +1,31 @@
+{
+  "name": "@lectio/mcp-server",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "lectio-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "echo 'no lint configured'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@lectio/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.0.4",
+    "drizzle-orm": "0.36.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "20.16.10",
+    "tsx": "4.19.1",
+    "typescript": "5.6.2",
+    "vitest": "2.1.2"
+  }
+}

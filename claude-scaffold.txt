@@ -1,0 +1,79 @@
+Estou criando um projeto open-source chamado lectio — um app de 
+captura inteligente self-hosted, MIT, com suporte a múltiplos 
+LLM providers (Anthropic, OpenAI, Google, Ollama, OpenRouter, 
+OpenAI-compatible).
+
+## Stack
+- Next.js 14+ App Router + TypeScript (full-stack)
+- PostgreSQL 16 + pgvector (via Docker, não Supabase)
+- Drizzle ORM
+- Tailwind + shadcn/ui (tema neutro, modo escuro default)
+- Workers em processo separado (BullMQ + Redis OU pg_boss que usa o próprio Postgres — prefira pg_boss pra não exigir Redis no setup mínimo)
+- MinIO (S3-compatible) pra mídia, com abstração que permite trocar pra filesystem
+- PWA: manifest, service worker, share target API
+- next-auth com credentials provider (single-user no MVP, ADMIN_PASSWORD via env)
+
+## Estrutura monorepo
+Use turborepo. Pacotes:
+- packages/core: lógica de domínio, sem dependência de UI. 
+  Aqui mora: LLM provider abstraction, prompts, pipeline 
+  (capture → enrich → connect), db schema, types.
+- packages/web: Next.js app (UI + API routes que delegam pro core)
+- packages/worker: processo separado que consome a fila e 
+  chama as funções do core
+- packages/mcp-server: servidor MCP que expõe as capturas como 
+  ferramentas (search_captures, get_capture, list_recent)
+
+## Tarefa desta primeira sessão
+Crie o scaffold completo do monorepo:
+
+1. turborepo + pnpm workspaces configurados
+2. packages/core com:
+   - drizzle schema (captures, enrichments, connections, 
+     feedback) com pgvector
+   - migrations iniciais
+   - LLM provider abstraction (interface + factory + 
+     implementação Anthropic e OpenAI no mínimo; deixa os 
+     outros stubbed)
+   - Os três prompts (enrichment, search, connections) já 
+     populados — vou colar separadamente, deixa placeholder 
+     por enquanto
+3. packages/web com:
+   - Next.js 14 App Router
+   - Rotas: /capture, /inbox, /search, /api/captures, 
+     /api/search, /api/process
+   - shadcn/ui instalado, layout base com sidebar mobile
+   - PWA manifest + service worker básico
+4. packages/worker com:
+   - pg_boss configurado lendo da mesma DATABASE_URL
+   - Job handlers: enrich_capture, generate_connections
+5. Dockerfile multi-stage (build → runtime), multi-arch 
+   (amd64 + arm64)
+6. docker-compose.yml (vou colar separadamente)
+7. .env.example, README.md (vou colar), LICENSE (MIT)
+8. .github/workflows/ci.yml com lint + typecheck + test
+9. .github/workflows/release.yml que builda e publica imagem 
+   no ghcr.io quando tag v* é criada
+
+## Princípios de código
+- Tudo tipado, strict mode no tsconfig
+- Sem `any` exceto onde absolutamente necessário e comentado
+- Functions pequenas, arquivos curtos
+- Prompts ficam em packages/core/src/prompts/*.ts como constantes 
+  exportadas, NUNCA inline
+- LLM calls SEMPRE passam pelo provider abstraction, nunca 
+  importar SDK direto fora de packages/core/src/llm/
+- Erros de LLM (rate limit, timeout, parse failure) são 
+  retryáveis no worker; UI nunca espera processamento síncrono
+
+## Restrições
+- ZERO acoplamento com Supabase ou Vercel (deve rodar em 
+  qualquer VPS via docker compose up)
+- ZERO telemetria
+- Inglês em todo código, comentários, UI, docs
+
+Comece criando a estrutura de pastas, o turborepo, e o 
+packages/core com o schema + LLM abstraction. Não tente fazer 
+tudo numa sessão — termine esse núcleo primeiro e me mostre 
+rodando (migrations aplicadas, um teste do provider Anthropic 
+funcionando) antes de partir pro web/worker.

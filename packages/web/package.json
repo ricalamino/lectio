@@ -1,0 +1,44 @@
+{
+  "name": "@lectio/web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev -p 3000",
+    "start": "next start -p 3000",
+    "lint": "next lint",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf .next .turbo dist"
+  },
+  "dependencies": {
+    "@lectio/core": "workspace:*",
+    "drizzle-orm": "0.36.0",
+    "pg-boss": "10.1.5",
+    "next": "14.2.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "next-auth": "5.0.0-beta.22",
+    "zod": "3.23.8",
+    "@radix-ui/react-slot": "1.1.0",
+    "@radix-ui/react-dialog": "1.1.2",
+    "class-variance-authority": "0.7.0",
+    "clsx": "2.1.1",
+    "tailwind-merge": "2.5.4",
+    "lucide-react": "0.453.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.16.10",
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.0",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.47",
+    "tailwindcss": "3.4.13",
+    "tailwindcss-animate": "1.0.7",
+    "typescript": "5.6.2",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.15",
+    "vitest": "2.1.2"
+  }
+}
