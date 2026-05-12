@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # Multi-stage build that produces a single image carrying both the Next.js
-# server (default CMD) and the worker (`node dist/worker.js`). Multi-arch is
-# driven by buildx — the release workflow targets linux/amd64 + linux/arm64.
+# server (default CMD) and the worker (`node /app/worker/dist/index.js`).
+# Multi-arch is driven by buildx — the release workflow targets linux/amd64
+# + linux/arm64.
 
 ARG NODE_VERSION=20.18.0
 
@@ -22,7 +23,7 @@ COPY packages/mcp-server/package.json packages/mcp-server/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
-# ---- build: compile core, build worker, build next standalone ----
+# ---- build: compile core, build worker/mcp, build next standalone --------
 FROM deps AS build
 WORKDIR /repo
 COPY . .
@@ -32,36 +33,44 @@ RUN pnpm --filter @lectio/mcp-server build
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @lectio/web build
 
-# ---- runtime: minimal node image with just what each entrypoint needs ----
+# ---- deploy: produce self-contained dist trees for worker and mcp-server --
+# `pnpm deploy` resolves workspace:* into real node_modules with the
+# dependent packages copied in. The output is portable — no symlinks back
+# into the monorepo.
+FROM build AS deploy
+WORKDIR /repo
+RUN pnpm --filter @lectio/worker --prod deploy /out/worker
+RUN pnpm --filter @lectio/mcp-server --prod deploy /out/mcp-server
+
+# ---- runtime: minimal node image -----------------------------------------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-# Next.js standalone output already bundles its own minimal node_modules.
+# ffmpeg: extracts the audio track from video captures before Whisper.
+# Pulled from Debian's repo for reproducible builds across amd64/arm64.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
+# Next.js standalone bundle (self-contained node_modules subset).
 COPY --from=build /repo/packages/web/.next/standalone ./
 COPY --from=build /repo/packages/web/.next/static ./packages/web/.next/static
 COPY --from=build /repo/packages/web/public ./packages/web/public
 
-# Worker + migrations + mcp-server, with their compiled output and a
-# self-contained node_modules produced by `pnpm deploy`.
-COPY --from=build /repo/packages/worker/dist ./worker/dist
-COPY --from=build /repo/packages/mcp-server/dist ./mcp-server/dist
-COPY --from=build /repo/packages/core/dist ./core/dist
-COPY --from=build /repo/packages/core/src/db/migrations ./core/migrations
+# Worker + mcp-server, each as a self-contained deployment from pnpm deploy.
+COPY --from=deploy /out/worker ./worker
+COPY --from=deploy /out/mcp-server ./mcp-server
 
-# Re-install only production deps for the non-web entrypoints. Using npm here
-# (not pnpm) keeps the runtime layer free of workspace tooling.
-COPY --from=build /repo/packages/worker/package.json ./worker/package.json
-COPY --from=build /repo/packages/mcp-server/package.json ./mcp-server/package.json
-RUN cd worker && npm install --omit=dev --no-audit --no-fund --ignore-scripts \
-    && cd ../mcp-server && npm install --omit=dev --no-audit --no-fund --ignore-scripts
+# Entrypoint runs migrations against DATABASE_URL before exec'ing the real
+# command. Both web and worker containers use this script.
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint
+RUN chmod +x /usr/local/bin/entrypoint
 
-USER node
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Default: run the Next.js server. The compose file overrides `command` for
-# the worker container to `node /app/worker/dist/index.js`.
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
 CMD ["node", "packages/web/server.js"]

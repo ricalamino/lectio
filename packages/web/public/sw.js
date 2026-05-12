@@ -2,7 +2,7 @@
 // offline; everything else falls through to the network. Intentionally tiny
 // — Workbox / smarter caching can come later.
 const CACHE = "lectio-shell-v1";
-const SHELL = ["/", "/capture", "/manifest.webmanifest"];
+const SHELL = ["/", "/capture", "/inbox", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));

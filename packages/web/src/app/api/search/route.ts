@@ -1,23 +1,208 @@
 import { NextResponse } from "next/server";
-import { desc, ilike, or } from "drizzle-orm";
+import { desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { captures } from "@lectio/core/db/schema";
+import { env } from "@/lib/env";
+import { captures, enrichments } from "@lectio/core/db/schema";
+import { createProvider, type LlmProviderName } from "@lectio/core/llm";
+import {
+  buildSearchUserMessage,
+  SEARCH_SYSTEM_PROMPT,
+  type SearchCandidate,
+} from "@lectio/core/prompts";
+import {
+  mergeVectorAndLexicalHits,
+  resolveCitationHits,
+  type SearchHitRow,
+} from "@/lib/search-retrieval";
 
-// MVP: lexical-only over raw text. The semantic + LLM rerank path lives in the
-// worker; this route is what the UI hits for instant feedback while the
-// semantic pipeline is still being built out.
+const STOP_WORDS = new Set([
+  "a",
+  "as",
+  "com",
+  "da",
+  "de",
+  "do",
+  "e",
+  "eh",
+  "em",
+  "eu",
+  "minha",
+  "meu",
+  "o",
+  "os",
+  "para",
+  "qual",
+  "quando",
+  "que",
+  "tenho",
+]);
+
+function searchTerms(q: string): string[] {
+  const normalized = q
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return Array.from(
+    new Set(normalized.match(/[\p{L}\p{N}]+/gu)?.filter((term) => {
+      return term.length > 2 && !STOP_WORDS.has(term);
+    }) ?? []),
+  ).slice(0, 6);
+}
+
+function fieldMatches(pattern: string): SQL[] {
+  return [
+    ilike(captures.rawText, pattern),
+    ilike(captures.sourceUrl, pattern),
+    ilike(enrichments.title, pattern),
+    ilike(enrichments.summary, pattern),
+    sql`${enrichments.tags}::text ilike ${pattern}`,
+    sql`${enrichments.entities}::text ilike ${pattern}`,
+    sql`${enrichments.suggestedAction}::text ilike ${pattern}`,
+  ];
+}
+
+function providerName(value: string): LlmProviderName {
+  switch (value) {
+    case "anthropic":
+    case "openai":
+    case "google":
+    case "ollama":
+    case "openrouter":
+    case "openai-compatible":
+      return value;
+    default:
+      throw new Error(`Unsupported search provider: ${value}`);
+  }
+}
+
+function toCandidate(row: SearchHitRow): SearchCandidate {
+  return {
+    capture_id: row.id,
+    title: row.title ?? "Untitled capture",
+    summary: row.summary ?? row.rawText ?? "",
+    tags: row.tags ?? [],
+    raw_content: row.rawText ?? "",
+    created_at: row.capturedAt.toISOString(),
+  };
+}
+
+async function loadLexicalCandidates(q: string): Promise<SearchHitRow[]> {
+  const terms = searchTerms(q);
+  const patterns = [`%${q}%`, ...terms.map((term) => `%${term}%`)];
+  const conditions = patterns.flatMap(fieldMatches);
+
+  return db()
+    .select({
+      id: captures.id,
+      rawText: captures.rawText,
+      kind: captures.kind,
+      capturedAt: captures.capturedAt,
+      mediaKey: captures.mediaKey,
+      title: enrichments.title,
+      summary: enrichments.summary,
+      tags: enrichments.tags,
+      suggestedAction: enrichments.suggestedAction,
+    })
+    .from(captures)
+    .leftJoin(enrichments, eq(enrichments.captureId, captures.id))
+    .where(or(...conditions))
+    .orderBy(desc(captures.capturedAt))
+    .limit(24);
+}
+
+async function loadVectorCandidates(
+  queryEmbedding: number[],
+  limit: number,
+): Promise<SearchHitRow[]> {
+  const vector = `[${queryEmbedding.join(",")}]`;
+
+  return db()
+    .select({
+      id: captures.id,
+      rawText: captures.rawText,
+      kind: captures.kind,
+      capturedAt: captures.capturedAt,
+      mediaKey: captures.mediaKey,
+      title: enrichments.title,
+      summary: enrichments.summary,
+      tags: enrichments.tags,
+      suggestedAction: enrichments.suggestedAction,
+    })
+    .from(captures)
+    .innerJoin(enrichments, eq(enrichments.captureId, captures.id))
+    .where(isNotNull(enrichments.embedding))
+    .orderBy(sql`${enrichments.embedding} <=> ${vector}::vector`)
+    .limit(limit);
+}
+
+async function embedQuery(q: string, config: ReturnType<typeof env>): Promise<number[] | null> {
+  const model = config.LECTIO_EMBED_MODEL;
+  if (!model) return null;
+
+  if (config.LECTIO_EMBED_PROVIDER === "openai") {
+    if (!config.OPENAI_API_KEY) return null;
+    const openai = createProvider("openai", config);
+    const result = await openai.embed({ model, input: q });
+    return result.embeddings[0] ?? null;
+  }
+
+  if (config.LECTIO_EMBED_PROVIDER === "ollama") {
+    if (!config.OLLAMA_BASE_URL) return null;
+    const ollama = createProvider("ollama", config);
+    const result = await ollama.embed({ model, input: q });
+    return result.embeddings[0] ?? null;
+  }
+
+  return null;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim();
   if (!q) {
-    return NextResponse.json({ hits: [] });
+    return NextResponse.json({ answer: null, hits: [], cited: [] });
   }
-  const pattern = `%${q}%`;
-  const rows = await db()
-    .select({ id: captures.id, rawText: captures.rawText, kind: captures.kind })
-    .from(captures)
-    .where(or(ilike(captures.rawText, pattern), ilike(captures.sourceUrl, pattern)))
-    .orderBy(desc(captures.capturedAt))
-    .limit(20);
-  return NextResponse.json({ hits: rows });
+
+  const config = env();
+  const [queryEmbedding, lexicalRows] = await Promise.all([
+    embedQuery(q, config),
+    loadLexicalCandidates(q),
+  ]);
+
+  const vectorRows =
+    queryEmbedding && queryEmbedding.length > 0
+      ? await loadVectorCandidates(queryEmbedding, 24)
+      : [];
+
+  const rows = mergeVectorAndLexicalHits(vectorRows, lexicalRows, 20);
+
+  if (rows.length === 0) {
+    return NextResponse.json({
+      answer: "Não encontrei nada direto nas suas capturas.",
+      hits: [],
+      cited: [],
+    });
+  }
+
+  const llm = createProvider(providerName(config.LECTIO_SEARCH_PROVIDER), config);
+  const answer = await llm.complete({
+    model: config.LECTIO_SEARCH_MODEL,
+    maxTokens: 600,
+    temperature: 0,
+    messages: [
+      { role: "system", content: SEARCH_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: buildSearchUserMessage({
+          query: q,
+          candidates: rows.map(toCandidate),
+        }),
+      },
+    ],
+  });
+
+  const cited = resolveCitationHits(answer.text, rows);
+
+  return NextResponse.json({ answer: answer.text, hits: rows, cited });
 }

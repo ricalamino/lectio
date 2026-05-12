@@ -1,11 +1,7 @@
 import { AnthropicProvider } from "./anthropic.js";
+import { OllamaProvider } from "./ollama.js";
 import { OpenAIProvider } from "./openai.js";
-import {
-  googleStub,
-  ollamaStub,
-  openaiCompatibleStub,
-  openrouterStub,
-} from "./stubs.js";
+import { googleStub, openaiCompatibleStub, openrouterStub } from "./stubs.js";
 import type { LlmProvider, LlmProviderName } from "./types.js";
 
 export interface ProviderEnv {
@@ -35,8 +31,11 @@ export function createProvider(
     }
     case "google":
       return googleStub;
-    case "ollama":
-      return ollamaStub;
+    case "ollama": {
+      const baseUrl = env.OLLAMA_BASE_URL;
+      if (!baseUrl) throw new Error("OLLAMA_BASE_URL is not set");
+      return new OllamaProvider({ baseUrl });
+    }
     case "openrouter":
       return openrouterStub;
     case "openai-compatible":

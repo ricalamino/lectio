@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-  
+
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -22,11 +22,18 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
-  
+
   app:
-    image: ghcr.io/lectio-app/lectio:latest
-    # build: .   # uncomment for local development
+    # The image:/build: combo lets you swap between a prebuilt GHCR image and
+    # a local build. Uncomment image: when consuming a released version.
+    # image: ghcr.io/lectio-app/lectio:latest
+    build: .
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,18 +51,23 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LECTIO_SEARCH_PROVIDER: ${LECTIO_SEARCH_PROVIDER:-anthropic}
+      LECTIO_SEARCH_MODEL: ${LECTIO_SEARCH_MODEL:-claude-sonnet-4-6}
+      LECTIO_EMBED_PROVIDER: ${LECTIO_EMBED_PROVIDER:-}
+      LECTIO_EMBED_MODEL: ${LECTIO_EMBED_MODEL:-}
     ports:
       - "${LECTIO_PORT:-3000}:3000"
-    volumes:
-      - ./config.yaml:/app/config.yaml:ro
     restart: unless-stopped
-  
+
   worker:
-    image: ghcr.io/lectio-app/lectio:latest
+    # image: ghcr.io/lectio-app/lectio:latest
+    build: .
     command: ["node", "/app/worker/dist/index.js"]
     depends_on:
       postgres:
         condition: service_healthy
+      app:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lectio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lectio}
       S3_ENDPOINT: http://minio:9000
@@ -67,8 +79,19 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-    volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      LECTIO_ENRICH_PROVIDER: ${LECTIO_ENRICH_PROVIDER:-anthropic}
+      LECTIO_ENRICH_MODEL: ${LECTIO_ENRICH_MODEL:-claude-sonnet-4-6}
+      # Embeddings are optional. Leave unset to skip vector storage (search
+      # falls back to lexical-only). Typical setup: openai + text-embedding-3-small.
+      LECTIO_EMBED_PROVIDER: ${LECTIO_EMBED_PROVIDER:-}
+      LECTIO_EMBED_MODEL: ${LECTIO_EMBED_MODEL:-}
+      LECTIO_TRANSCRIBE_BACKEND: ${LECTIO_TRANSCRIBE_BACKEND:-}
+      LECTIO_TRANSCRIBE_URL: ${LECTIO_TRANSCRIBE_URL:-}
+      LECTIO_TRANSCRIBE_API_KEY: ${LECTIO_TRANSCRIBE_API_KEY:-}
+      LECTIO_WHISPER_MODEL: ${LECTIO_WHISPER_MODEL:-whisper-1}
+      LECTIO_VISION_MODEL: ${LECTIO_VISION_MODEL:-gpt-4o-mini}
+      # The web container has already run migrations by the time we start.
+      LECTIO_SKIP_MIGRATE: "1"
     restart: unless-stopped
 
 volumes:

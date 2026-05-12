@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { captures } from "@lectio/core/db/schema";
@@ -15,13 +16,15 @@ export default async function InboxPage() {
         <ul className="divide-y divide-border rounded-md border border-border">
           {rows.map((c) => (
             <li key={c.id} className="px-4 py-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{c.kind}</span>
-                <span className="text-muted-foreground text-xs">{c.status}</span>
-              </div>
-              {c.rawText ? (
-                <p className="mt-1 line-clamp-2 text-muted-foreground">{c.rawText}</p>
-              ) : null}
+              <Link href={`/inbox/${c.id}`} className="block hover:bg-muted/40">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{c.kind}</span>
+                  <span className="text-muted-foreground text-xs">{c.status}</span>
+                </div>
+                {c.rawText ? (
+                  <p className="mt-1 line-clamp-2 text-muted-foreground">{c.rawText}</p>
+                ) : null}
+              </Link>
             </li>
           ))}
         </ul>

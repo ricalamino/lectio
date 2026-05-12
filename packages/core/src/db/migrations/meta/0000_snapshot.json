@@ -1,5 +1,5 @@
 {
-  "id": "303362d9-25ba-4559-9e17-03c3262f95dd",
+  "id": "5115e8b4-280e-4ecb-b578-65c82ebe07a7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -146,9 +146,16 @@
           "primaryKey": false,
           "notNull": true
         },
-        "rationale": {
-          "name": "rationale",
+        "reason": {
+          "name": "reason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "connection_confidence",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
@@ -156,7 +163,7 @@
           "name": "score",
           "type": "real",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -300,14 +307,19 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
-          "default": "'[]'::jsonb"
+          "default": "'{}'::jsonb"
         },
-        "suggested_actions": {
-          "name": "suggested_actions",
+        "suggested_action": {
+          "name": "suggested_action",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
+          "notNull": false
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "transcript": {
           "name": "transcript",
@@ -365,6 +377,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "enrichments_content_type_idx": {
+          "name": "enrichments_content_type_idx",
+          "columns": [
+            {
+              "expression": "content_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -509,6 +536,15 @@
         "failed"
       ]
     },
+    "public.connection_confidence": {
+      "name": "connection_confidence",
+      "schema": "public",
+      "values": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
     "public.connection_kind": {
       "name": "connection_kind",
       "schema": "public",
@@ -516,8 +552,8 @@
         "continuation",
         "contradiction",
         "pattern",
-        "same_entity",
-        "related"
+        "entity_update",
+        "question_answer"
       ]
     },
     "public.feedback_kind": {

@@ -26,10 +26,30 @@
     "./prompts": {
       "types": "./dist/prompts/index.d.ts",
       "default": "./dist/prompts/index.js"
+    },
+    "./integrations/openai-media": {
+      "types": "./dist/integrations/openaiMedia.d.ts",
+      "default": "./dist/integrations/openaiMedia.js"
+    },
+    "./integrations/transcribe": {
+      "types": "./dist/integrations/transcribe.d.ts",
+      "default": "./dist/integrations/transcribe.js"
+    },
+    "./integrations/pdf": {
+      "types": "./dist/integrations/pdf.d.ts",
+      "default": "./dist/integrations/pdf.js"
+    },
+    "./integrations/video": {
+      "types": "./dist/integrations/video.d.ts",
+      "default": "./dist/integrations/video.js"
+    },
+    "./importers": {
+      "types": "./dist/importers/index.d.ts",
+      "default": "./dist/importers/index.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-migrations.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "echo 'no lint configured'",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -44,6 +64,7 @@
     "@anthropic-ai/sdk": "0.32.1",
     "openai": "4.68.4",
     "drizzle-orm": "0.36.0",
+    "pdf-parse": "1.1.1",
     "postgres": "3.4.5",
     "zod": "3.23.8"
   },

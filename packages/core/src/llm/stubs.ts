@@ -18,6 +18,5 @@ function notImplemented(name: LlmProviderName): LlmProvider {
 }
 
 export const googleStub = notImplemented("google");
-export const ollamaStub = notImplemented("ollama");
 export const openrouterStub = notImplemented("openrouter");
 export const openaiCompatibleStub = notImplemented("openai-compatible");

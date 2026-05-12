@@ -16,7 +16,14 @@ let cached: Promise<PgBoss> | null = null;
 function start(): Promise<PgBoss> {
   if (cached) return cached;
   const boss = new PgBoss({ connectionString: env().DATABASE_URL });
-  cached = boss.start().then(() => boss);
+  cached = boss.start().then(async () => {
+    // Queues must exist before send() in pg-boss 10; createQueue is
+    // idempotent. Doing it here means a worker-less deploy still queues
+    // jobs that a worker can pick up later.
+    await boss.createQueue(JOB_ENRICH);
+    await boss.createQueue(JOB_CONNECT);
+    return boss;
+  });
   return cached;
 }
 

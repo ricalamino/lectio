@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, Search, Plus, Menu, LogOut } from "lucide-react";
+import { FileDown, FolderInput, GitBranch, Inbox, LogOut, Menu, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,9 @@ const items = [
   { href: "/capture", label: "Capture", icon: Plus },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/connections", label: "Connections", icon: GitBranch },
+  { href: "/import", label: "Import", icon: FolderInput },
+  { href: "/export", label: "Export", icon: FileDown },
 ] as const;
 
 export function Sidebar() {

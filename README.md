@@ -60,12 +60,14 @@ docker compose up -d
 4. **Recall** — natural-language search across everything you 
    ever captured, with citations.
 
-See [docs/architecture.md](docs/architecture.md) for the full 
-pipeline.
+See [docs/scaffold-status.md](docs/scaffold-status.md) for the live checklist.
 
 ## LLM providers
 
-Lectio is provider-agnostic. Pick per-task:
+Lectio is moving toward provider-agnostic model selection. The 
+current implementation supports **Anthropic**, **OpenAI**, and **Ollama** 
+(chat + JSON + embeddings). Google, OpenRouter, and OpenAI-compatible 
+providers are stubbed until their adapters are built.
 
 ```yaml
 # config.yaml
@@ -90,29 +92,27 @@ transcription:
   model: whisper-1
 ```
 
-Supported providers: `anthropic`, `openai`, `google`, `ollama`, 
-`openrouter`, `openai-compatible` (covers most local servers 
-including LM Studio, vLLM, llama.cpp server).
+Provider names in config: `anthropic`, `openai`, `google`, 
+`ollama`, `openrouter`, `openai-compatible`.
 
-See [docs/llm-providers.md](docs/llm-providers.md).
+See [docs/architecture.md](docs/architecture.md) for package layout and data flow, and [docs/llm-providers.md](docs/llm-providers.md) for provider configuration.
 
 ## Roadmap
 
-- [x] Text, voice, image, link capture
+- [x] Text capture (voice/image/OCR still out of scope)
 - [x] Enrichment pipeline
 - [x] Semantic + lexical hybrid search
-- [x] Connection suggestions
-- [x] PWA with share target
+- [x] Connection suggestions + review UI
+- [x] PWA with share target + offline capture queue (client-side)
 - [x] MCP server
-- [ ] Import from Notion / Logseq / Apple Notes / WhatsApp
+- [x] Import — WhatsApp `.txt`, Markdown ZIP, Notion (official API), Logseq graph, Apple Notes export
 - [ ] Weekly digest
 - [ ] Multi-user
 - [ ] Plugin system
 
 ## Contributing
 
-PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Join 
-[Discord](https://discord.gg/lectio) for discussion.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

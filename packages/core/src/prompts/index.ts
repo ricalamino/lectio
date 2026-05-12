@@ -1,25 +1,30 @@
 export {
   ENRICHMENT_SYSTEM_PROMPT,
+  buildEnrichmentUserMessage,
   enrichmentOutputSchema,
-  enrichmentUserPrompt,
-  type EnrichmentInput,
+  enrichmentEntitiesSchema,
+  enrichmentSuggestedActionSchema,
+  enrichmentContentTypeEnum,
   type EnrichmentOutput,
+  type EnrichmentMediaType,
 } from "./enrichment.js";
 
 export {
   SEARCH_SYSTEM_PROMPT,
-  searchOutputSchema,
-  searchUserPrompt,
+  buildSearchUserMessage,
+  extractCitationIds,
   type SearchCandidate,
-  type SearchOutput,
 } from "./search.js";
 
 export {
-  CONNECTIONS_SYSTEM_PROMPT,
-  connectionsOutputSchema,
-  connectionsUserPrompt,
-  connectionKindEnum,
-  type ConnectionsInput,
-  type ConnectionsNeighbour,
-  type ConnectionsOutput,
+  CONNECTION_SYSTEM_PROMPT,
+  buildConnectionUserMessage,
+  connectionOutputSchema,
+  connectionVerdictEnum,
+  connectionTypeEnum,
+  connectionConfidenceEnum,
+  normalizeConnectionType,
+  type ConnectionOutput,
+  type ConnectionType,
+  type ConnectionCaptureRef,
 } from "./connections.js";

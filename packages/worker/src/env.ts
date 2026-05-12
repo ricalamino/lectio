@@ -1,16 +1,43 @@
 import { z } from "zod";
 
+// Empty strings come from compose's `${FOO:-}` fallback; treat them as
+// unset rather than as invalid values.
+const optionalString = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : undefined));
+const optionalUrl = optionalString.pipe(z.string().url().optional());
+
 const schema = z.object({
   DATABASE_URL: z.string().url(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  GOOGLE_API_KEY: z.string().optional(),
-  OLLAMA_BASE_URL: z.string().url().optional(),
-  OPENROUTER_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: optionalString,
+  OPENAI_API_KEY: optionalString,
+  GOOGLE_API_KEY: optionalString,
+  OLLAMA_BASE_URL: optionalUrl,
+  OPENROUTER_API_KEY: optionalString,
+  S3_ENDPOINT: optionalUrl,
+  S3_BUCKET: optionalString,
+  S3_ACCESS_KEY: optionalString,
+  S3_SECRET_KEY: optionalString,
   LECTIO_ENRICH_PROVIDER: z.string().default("anthropic"),
   LECTIO_ENRICH_MODEL: z.string().default("claude-sonnet-4-6"),
-  LECTIO_EMBED_PROVIDER: z.string().default("openai"),
-  LECTIO_EMBED_MODEL: z.string().default("text-embedding-3-small"),
+  // Transcription. Backend defaults to "openai" when OPENAI_API_KEY is set;
+  // set LECTIO_TRANSCRIBE_BACKEND=openai_compatible + LECTIO_TRANSCRIBE_URL
+  // to point at a local Whisper server (faster-whisper-server, Speaches, LocalAI,
+  // etc.) that implements the OpenAI audio.transcriptions endpoint.
+  LECTIO_TRANSCRIBE_BACKEND: optionalString.pipe(
+    z.enum(["openai", "openai_compatible"]).optional(),
+  ),
+  LECTIO_TRANSCRIBE_URL: optionalUrl,
+  LECTIO_TRANSCRIBE_API_KEY: optionalString,
+  LECTIO_WHISPER_MODEL: optionalString,
+  // OCR: still OpenAI-only.
+  LECTIO_VISION_MODEL: optionalString,
+  // Embeddings are optional in the MVP. When unset, enrichments are stored
+  // without a vector and semantic search/connections degrade gracefully to
+  // lexical-only.
+  LECTIO_EMBED_PROVIDER: optionalString,
+  LECTIO_EMBED_MODEL: optionalString,
 });
 
 export type WorkerEnv = z.infer<typeof schema>;
