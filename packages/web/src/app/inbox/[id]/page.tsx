@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { captures, connections, enrichments } from "@lectio/core/db/schema";
 import { RetryEnrichButton } from "@/components/retry-enrich-button";
+import { DeleteCaptureButton, EditRawText } from "@/components/capture-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -56,14 +57,17 @@ export default async function CaptureDetailPage({ params }: Props) {
         <Link href="/inbox" className="text-sm text-muted-foreground hover:text-foreground">
           ← Inbox
         </Link>
-        {capture.mediaKey ? (
-          <a
-            href={`/api/captures/${capture.id}/media`}
-            className="text-sm text-primary underline-offset-4 hover:underline"
-          >
-            Attachment
-          </a>
-        ) : null}
+        <div className="flex items-center gap-3">
+          {capture.mediaKey ? (
+            <a
+              href={`/api/captures/${capture.id}/media`}
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              Attachment
+            </a>
+          ) : null}
+          <DeleteCaptureButton captureId={capture.id} />
+        </div>
       </div>
 
       <header className="space-y-1">
@@ -100,9 +104,7 @@ export default async function CaptureDetailPage({ params }: Props) {
       {capture.rawText ? (
         <section className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">Raw</h2>
-          <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm">
-            {capture.rawText}
-          </pre>
+          <EditRawText captureId={capture.id} initialText={capture.rawText} />
         </section>
       ) : null}
 
