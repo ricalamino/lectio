@@ -162,9 +162,8 @@ Items needed before a public Reddit post. Tackled in order.
       for honest comparison vs Obsidian, Notion, Logseq, Mem.ai.
 - [x] **Markdown editor with preview** — tabbed Preview/Edit panel with
       markdown rendering via `marked` (lazy-loaded).
-- [ ] **Background Sync PWA** — currently the offline queue is
-      retried on page load. Register a Background Sync task so
-      captures flush even when the tab is closed.
+- [x] **Background Sync PWA** — registers a `sync-captures` tag on
+      enqueue; SW messages open clients to flush on reconnect.
 - [ ] **Architecture diagram** — visual overview of the 4 packages
       and data flow. Helps contributors get oriented fast.
 - [ ] **Weekly digest** — email/push summary of what you captured
