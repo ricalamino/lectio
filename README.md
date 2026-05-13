@@ -164,8 +164,8 @@ Items needed before a public Reddit post. Tackled in order.
       markdown rendering via `marked` (lazy-loaded).
 - [x] **Background Sync PWA** — registers a `sync-captures` tag on
       enqueue; SW messages open clients to flush on reconnect.
-- [ ] **Architecture diagram** — visual overview of the 4 packages
-      and data flow. Helps contributors get oriented fast.
+- [x] **Architecture diagram** — ASCII diagram added to
+      [docs/architecture.md](docs/architecture.md).
 - [ ] **Weekly digest** — email/push summary of what you captured
       and what connections were found.
 
