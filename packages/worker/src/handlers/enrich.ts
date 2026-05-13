@@ -235,11 +235,29 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
       .set({ status: "enriched", updatedAt: new Date() })
       .where(eq(captures.id, capture.id));
   } catch (err) {
+    const isNonRetryable = err instanceof LlmError && !err.opts.retryable;
+    const enrichError = isNonRetryable ? "llm_non_retryable" : "llm_failed";
+    const enrichErrorDetail =
+      err instanceof LlmError
+        ? `${err.opts.kind ?? "unknown"}: ${err.message}`
+        : err instanceof Error
+          ? err.message
+          : String(err);
     await deps.db
       .update(captures)
-      .set({ status: "failed", updatedAt: new Date() })
+      .set({
+        status: "failed",
+        updatedAt: new Date(),
+        metadata: {
+          ...(typeof capture.metadata === "object" && capture.metadata !== null
+            ? capture.metadata
+            : {}),
+          enrichError,
+          enrichErrorDetail,
+        },
+      })
       .where(eq(captures.id, capture.id));
-    if (err instanceof LlmError && !err.opts.retryable) {
+    if (isNonRetryable) {
       console.error("[enrich] non-retryable LLM failure", err);
       return;
     }
