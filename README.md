@@ -131,34 +131,25 @@ Items needed before a public Reddit post. Tackled in order.
 
 ### Critical
 
-- [ ] **Screenshots / demo GIF** — README references `docs/demo.gif`
-      which doesn't exist yet. Need 2–3 real screenshots of inbox,
+- [ ] **Screenshots / demo GIF** — need 2–3 real screenshots of inbox,
       capture, and search result.
-- [ ] **Embedding dimension flexibility** — hardcoded 1536 in schema;
-      switching to Ollama `nomic-embed-text` (768-dim) silently breaks
-      vector search. Need a migration guide or runtime check with a
-      clear error message.
-- [ ] **First-run onboarding** — when `.env` is missing required keys
-      the app either crashes or silently fails. Show a setup checklist
-      on first login instead.
-- [ ] **Better worker error surfacing** — enrichment failures are
-      logged in the worker but not visible in the UI beyond "failed"
-      status. Show the actual error reason on the capture detail page.
-- [ ] **Honest provider table** — Google/OpenRouter/OpenAI-compatible
-      are listed as supported in `.env.example` but throw "not
-      implemented" at runtime. Table above is the fix; verify it.
+- [x] **Embedding dimension flexibility** — `LECTIO_EMBED_DIMENSIONS` env
+      var + clear mismatch error. See `.env.example` for Ollama config.
+- [x] **First-run onboarding** — setup banner shows on first login when
+      provider keys are missing, with actionable error messages.
+- [x] **Better worker error surfacing** — enrichment error code + detail
+      shown on capture detail page above the Retry button.
+- [x] **Honest provider table** — provider support table in README shows
+      Google/OpenRouter/OpenAI-compatible as "Not implemented yet".
 
 ### Important
 
-- [ ] **Cost documentation** — approximate cost per capture and per
-      search for each supported provider/model combination.
-- [ ] **Backup / restore guide** — `pg_dump` + MinIO bucket sync.
-      Without this, users will lose data on upgrades.
-- [ ] **Rate limiting / cost guardrails** — easy to accidentally burn
-      through API budget if the worker gets stuck in a retry loop.
-      Add a daily cap env var or at minimum document the risk.
-- [ ] **Troubleshooting guide** — top 10 issues (DB not connecting,
-      worker not starting, embeddings wrong dimension, etc.).
+- [x] **Cost documentation** — see [docs/cost-guide.md](docs/cost-guide.md)
+      for per-capture and per-search estimates per provider/model.
+- [x] **Backup / restore guide** — see [docs/backup-restore.md](docs/backup-restore.md).
+- [x] **Rate limiting / cost guardrails** — `LECTIO_MAX_ENRICH_PER_DAY`
+      env var caps daily enrichments; jobs stay queued for tomorrow.
+- [x] **Troubleshooting guide** — see [docs/troubleshooting.md](docs/troubleshooting.md).
 - [ ] **Voice + image capture testing** — transcription and OCR paths
       are wired up but haven't been end-to-end tested. Confirm or
       remove from feature claims.
@@ -182,8 +173,7 @@ Items needed before a public Reddit post. Tackled in order.
 
 ### Positioning
 
-- [ ] **Alpha disclaimer** — make it prominent that this is alpha
-      software, solo-maintained, no SLA. Prevents angry posts.
+- [x] **Alpha disclaimer** — prominent alpha notice added at top of README.
 - [ ] **Reddit post draft** — write the r/selfhosted and
       r/PKMS post before publishing. Check subreddit rules first
       (r/selfhosted requires a GitHub link + self-hosting angle;
