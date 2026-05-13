@@ -79,7 +79,33 @@ export default async function CaptureDetailPage({ params }: Props) {
         </h1>
         <p className="text-xs text-muted-foreground">{capture.capturedAt.toISOString()}</p>
         {capture.status === "failed" ? (
-          <div className="pt-1">
+          <div className="pt-1 space-y-2">
+            {(() => {
+              const meta =
+                capture.metadata &&
+                typeof capture.metadata === "object" &&
+                !Array.isArray(capture.metadata)
+                  ? (capture.metadata as Record<string, unknown>)
+                  : null;
+              const code = meta?.enrichError as string | undefined;
+              const detail = meta?.enrichErrorDetail as string | undefined;
+              const label =
+                code === "media_resolution_failed"
+                  ? "Could not extract content from media"
+                  : code === "empty_content"
+                    ? "Capture has no content to enrich"
+                    : code === "llm_non_retryable"
+                      ? "LLM returned a permanent error (check your API key or quota)"
+                      : code === "llm_failed"
+                        ? "LLM request failed"
+                        : null;
+              return label ? (
+                <p className="text-xs text-red-400">
+                  {label}
+                  {detail ? ` — ${detail}` : ""}
+                </p>
+              ) : null;
+            })()}
             <RetryEnrichButton captureId={capture.id} />
           </div>
         ) : null}

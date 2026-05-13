@@ -51,6 +51,15 @@ export function enqueuePendingCapture(payload: PendingCapturePayload): void {
   };
   const next = [...readRaw(), item];
   writeAll(next);
+  // Register a Background Sync task so the queue flushes when connectivity
+  // is restored, even if the user switches tabs.
+  if ("serviceWorker" in navigator && "SyncManager" in window) {
+    navigator.serviceWorker.ready
+      .then((reg) => (reg as unknown as { sync: { register(tag: string): Promise<void> } }).sync.register("sync-captures"))
+      .catch(() => {
+        // Background Sync not granted or not supported — silent fallback.
+      });
+  }
 }
 
 export function removePendingCapture(id: string): void {

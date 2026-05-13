@@ -17,6 +17,8 @@ const schema = z.object({
   GOOGLE_API_KEY: optionalString,
   OLLAMA_BASE_URL: optionalUrl,
   OPENROUTER_API_KEY: optionalString,
+  LECTIO_ENRICH_PROVIDER: z.string().default("anthropic"),
+  LECTIO_ENRICH_MODEL: z.string().default("claude-sonnet-4-6"),
   LECTIO_SEARCH_PROVIDER: z.string().default("anthropic"),
   LECTIO_SEARCH_MODEL: z.string().default("claude-sonnet-4-6"),
   LECTIO_EMBED_PROVIDER: optionalString,

@@ -2,6 +2,67 @@
 
 Lectio is a small monorepo optimized for self-hosting with Docker Compose.
 
+## System diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Browser / PWA                        │
+│                                                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
+│  │ /capture │  │  /inbox  │  │ /search  │  │ /connect  │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └─────┬─────┘  │
+│       │offline      │             │               │        │
+│    localStorage     │             │               │        │
+└───────┼─────────────┼─────────────┼───────────────┼────────┘
+        │ POST        │ GET         │ GET            │ GET
+        ▼             ▼             ▼                ▼
+┌────────────────────────────────────────────────────────────┐
+│                  packages/web  (Next.js)                   │
+│                                                            │
+│  API routes: /api/captures  /api/search  /api/connections  │
+│              /api/import    /api/export  /api/setup-status │
+│                                                            │
+│  Auth: next-auth JWT (single admin user)                   │
+└──────────┬───────────────────┬────────────────────────────-┘
+           │ Drizzle ORM       │ pg-boss publish
+           │                   │
+           ▼                   ▼
+┌──────────────────┐  ┌────────────────────────────────────┐
+│   PostgreSQL 16  │  │       packages/worker (Node)       │
+│   + pgvector     │◄─│                                    │
+│                  │  │  handleEnrich:                      │
+│  captures        │  │    resolve media → LLM → embed     │
+│  enrichments     │  │    → write enrichment row          │
+│  connections     │  │                                    │
+│  pg-boss queues  │  │  handleConnect:                    │
+└────────┬─────────┘  │    vector + lexical candidates     │
+         │            │    → batch LLM → write connections │
+         │            └──────────────┬─────────────────────┘
+         │                           │ createProvider
+         │                           ▼
+         │            ┌──────────────────────────────────┐
+         │            │     packages/core                │
+         │            │                                  │
+         │            │  llm/: anthropic, openai, ollama │
+         │            │  db/schema: Drizzle tables       │
+         │            │  prompts/: system prompts, Zod   │
+         │            └──────────────────────────────────┘
+         │
+         │  S3 API
+         ▼
+┌─────────────────┐    ┌───────────────────────────────────┐
+│      MinIO      │    │   packages/mcp-server (stdio)     │
+│  media objects  │    │                                   │
+│  (voice, image, │    │   Exposes captures to Claude      │
+│   PDF, video)   │    │   Desktop / Cursor via MCP        │
+└─────────────────┘    └───────────────────────────────────┘
+```
+
+**Key data paths:**
+- Capture → web API → Postgres (`pending`) → pg-boss → worker enriches → `enriched`
+- Search → web API → lexical SQL + pgvector → LLM → SSE stream to browser
+- MCP → direct DB read (no queue, read-only)
+
 ## Packages
 
 | Package | Role |

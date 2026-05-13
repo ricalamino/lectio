@@ -1,5 +1,7 @@
 import PgBoss from "pg-boss";
-import { createDatabase } from "@lectio/core/db";
+import { gte, sql } from "drizzle-orm";
+import { createDatabase, type Database } from "@lectio/core/db";
+import { captures } from "@lectio/core/db/schema";
 import { createProvider, type LlmProviderName } from "@lectio/core/llm";
 import { loadEnv } from "./env.js";
 import {
@@ -10,6 +12,16 @@ import {
 } from "./jobs.js";
 import { handleEnrich } from "./handlers/enrich.js";
 import { handleConnect } from "./handlers/connect.js";
+
+async function countEnrichedToday(db: Database): Promise<number> {
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(captures)
+    .where(gte(captures.updatedAt, startOfDay));
+  return row?.count ?? 0;
+}
 
 async function main() {
   const env = loadEnv();
@@ -52,6 +64,16 @@ async function main() {
       : null;
 
   await boss.work(JOB_ENRICH, { batchSize: 2 }, async (jobs) => {
+    if (env.LECTIO_MAX_ENRICH_PER_DAY !== undefined) {
+      const done = await countEnrichedToday(db);
+      if (done >= env.LECTIO_MAX_ENRICH_PER_DAY) {
+        console.warn(
+          `[worker] daily enrichment cap reached (${done}/${env.LECTIO_MAX_ENRICH_PER_DAY}). ` +
+            `Jobs will retry tomorrow.`,
+        );
+        return;
+      }
+    }
     for (const job of jobs) {
       const data = enrichJobSchema.parse(job.data);
       await handleEnrich(data, {
@@ -59,6 +81,7 @@ async function main() {
         llm,
         embed,
         models: { enrich: env.LECTIO_ENRICH_MODEL, embed: env.LECTIO_EMBED_MODEL },
+        embedDimensions: env.LECTIO_EMBED_DIMENSIONS,
         transcribe,
         vision,
         s3,
