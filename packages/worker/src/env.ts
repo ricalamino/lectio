@@ -43,6 +43,10 @@ const schema = z.object({
   // = 768) you must drop and recreate the embedding column first, then set
   // this to the matching value.
   LECTIO_EMBED_DIMENSIONS: z.coerce.number().int().positive().default(1536),
+  // Maximum number of captures to enrich per UTC day. Unset = no cap.
+  // Set this to avoid runaway costs if you accidentally import thousands of
+  // items. Remaining jobs stay queued and process on the following day(s).
+  LECTIO_MAX_ENRICH_PER_DAY: z.coerce.number().int().positive().optional(),
 });
 
 export type WorkerEnv = z.infer<typeof schema>;
