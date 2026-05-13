@@ -38,6 +38,11 @@ const schema = z.object({
   // lexical-only.
   LECTIO_EMBED_PROVIDER: optionalString,
   LECTIO_EMBED_MODEL: optionalString,
+  // Must match the vector column dimension in the DB (default 1536).
+  // If you use a model with different output dimensions (e.g. nomic-embed-text
+  // = 768) you must drop and recreate the embedding column first, then set
+  // this to the matching value.
+  LECTIO_EMBED_DIMENSIONS: z.coerce.number().int().positive().default(1536),
 });
 
 export type WorkerEnv = z.infer<typeof schema>;

@@ -59,6 +59,7 @@ async function main() {
         llm,
         embed,
         models: { enrich: env.LECTIO_ENRICH_MODEL, embed: env.LECTIO_EMBED_MODEL },
+        embedDimensions: env.LECTIO_EMBED_DIMENSIONS,
         transcribe,
         vision,
         s3,

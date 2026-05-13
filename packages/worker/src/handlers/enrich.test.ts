@@ -93,6 +93,7 @@ function makeDeps(overrides: Partial<EnrichDeps> = {}): EnrichDeps {
     llm: makeLlm(),
     embed: null,
     models: { enrich: "gpt-4o-mini" },
+    embedDimensions: 1536,
     transcribe: null,
     vision: null,
     s3: null,

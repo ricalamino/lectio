@@ -27,6 +27,8 @@ export interface EnrichDeps {
   llm: LlmProvider;
   embed: LlmProvider | null;
   models: { enrich: string; embed?: string };
+  /** Expected embedding vector dimension. Must match the DB column. */
+  embedDimensions: number;
   /** Transcription backend (OpenAI hosted or any OpenAI-compatible local server). */
   transcribe: TranscribeConfig | null;
   /** OpenAI vision (image OCR). */
@@ -202,10 +204,10 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
         input: `${json.data.title}\n\n${json.data.summary}\n\n${resolved.rawContent}`,
       });
       const candidate = embedded.embeddings[0] ?? null;
-      if (candidate !== null && candidate.length !== 1536) {
+      if (candidate !== null && candidate.length !== deps.embedDimensions) {
         console.warn(
-          `[enrich] embedding dimension mismatch: got ${candidate.length}, schema expects 1536. ` +
-            `Run a migration to change vector(1536) if using a different model. Skipping embedding.`,
+          `[enrich] embedding dimension mismatch: got ${candidate.length}, expected ${deps.embedDimensions} ` +
+            `(LECTIO_EMBED_DIMENSIONS). Drop and recreate the embedding column before switching models. Skipping embedding.`,
         );
       } else {
         embedding = candidate;
