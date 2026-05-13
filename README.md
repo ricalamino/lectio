@@ -105,7 +105,8 @@ LECTIO_EMBED_MODEL=nomic-embed-text
 | OpenRouter | ❌ | ❌ | ❌ | Not implemented yet |
 | OpenAI-compatible | ❌ | ❌ | ❌ | Not implemented yet |
 
-Configure via `.env` — see `.env.example` for all variables.
+Configure via `.env` — see `.env.example` for all variables and
+[docs/cost-guide.md](docs/cost-guide.md) for approximate per-capture costs.
 
 ## Roadmap
 
@@ -187,6 +188,14 @@ Items needed before a public Reddit post. Tackled in order.
       r/PKMS post before publishing. Check subreddit rules first
       (r/selfhosted requires a GitHub link + self-hosting angle;
       r/PKMS prefers workflow demos over feature lists).
+
+## Docs
+
+- [docs/cost-guide.md](docs/cost-guide.md) — per-capture and per-search cost estimates
+- [docs/backup-restore.md](docs/backup-restore.md) — how to back up and restore
+- [docs/troubleshooting.md](docs/troubleshooting.md) — common issues and fixes
+- [docs/architecture.md](docs/architecture.md) — package layout and data flow
+- [docs/llm-providers.md](docs/llm-providers.md) — provider configuration details
 
 ## Contributing
 
