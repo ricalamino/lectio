@@ -118,9 +118,9 @@ Configure via `.env` — see `.env.example` for all variables and
 - [x] MCP server
 - [x] Export (JSON + Markdown ZIP)
 - [x] Delete / edit captures + retry enrichment
-- [ ] Voice note transcription (Whisper) — wired but untested
-- [ ] Image / OCR capture — wired but untested
-- [ ] Import (WhatsApp, Notion, Logseq) — scaffolded, needs testing
+- [ ] Voice note transcription (Whisper) — API wired, needs end-to-end testing
+- [ ] Image / OCR capture (OpenAI Vision) — API wired, needs end-to-end testing
+- [ ] Import (WhatsApp, Notion API, Logseq, Apple Notes, Markdown ZIP) — implemented, needs testing
 - [ ] Weekly digest
 - [ ] Multi-user
 - [ ] Plugin system
