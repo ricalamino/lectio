@@ -158,9 +158,8 @@ Items needed before a public Reddit post. Tackled in order.
 
 ### Polish
 
-- [ ] **Comparison table** — how Lectio differs from Obsidian,
-      Notion, Logseq, Mem.ai, and Capacities. Essential for Reddit
-      where "why not just use X?" is the first reply.
+- [x] **Comparison table** — see [docs/comparison.md](docs/comparison.md)
+      for honest comparison vs Obsidian, Notion, Logseq, Mem.ai.
 - [ ] **Markdown editor with preview** — current capture detail shows
       raw text in a textarea. Even basic \`\`\`code\`\`\` rendering helps.
 - [ ] **Background Sync PWA** — currently the offline queue is
@@ -174,16 +173,15 @@ Items needed before a public Reddit post. Tackled in order.
 ### Positioning
 
 - [x] **Alpha disclaimer** — prominent alpha notice added at top of README.
-- [ ] **Reddit post draft** — write the r/selfhosted and
-      r/PKMS post before publishing. Check subreddit rules first
-      (r/selfhosted requires a GitHub link + self-hosting angle;
-      r/PKMS prefers workflow demos over feature lists).
+- [x] **Reddit post draft** — see [docs/reddit-post-draft.md](docs/reddit-post-draft.md)
+      for r/selfhosted, r/PKMS, and r/LocalLLaMA drafts + timing notes.
 
 ## Docs
 
 - [docs/cost-guide.md](docs/cost-guide.md) — per-capture and per-search cost estimates
 - [docs/backup-restore.md](docs/backup-restore.md) — how to back up and restore
 - [docs/troubleshooting.md](docs/troubleshooting.md) — common issues and fixes
+- [docs/comparison.md](docs/comparison.md) — comparison with Obsidian, Notion, Logseq, Mem.ai
 - [docs/architecture.md](docs/architecture.md) — package layout and data flow
 - [docs/llm-providers.md](docs/llm-providers.md) — provider configuration details
 
