@@ -1,10 +1,9 @@
 const STORAGE_KEY = "lectio-offline-capture-queue";
 const MAX_QUEUED = 50;
 
-export interface PendingCapturePayload {
-  kind: "text";
-  rawText: string;
-}
+export type PendingCapturePayload =
+  | { kind: "text"; rawText: string }
+  | { kind: "link"; sourceUrl: string; rawText?: string };
 
 export interface PendingCaptureItem {
   id: string;
@@ -27,7 +26,7 @@ function readRaw(): PendingCaptureItem[] {
         "createdAt" in x &&
         "payload" in x &&
         typeof (x as PendingCaptureItem).id === "string" &&
-        typeof (x as PendingCaptureItem).payload?.rawText === "string",
+        typeof (x as PendingCaptureItem).payload?.kind === "string",
     );
   } catch {
     return [];

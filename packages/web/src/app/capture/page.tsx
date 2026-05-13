@@ -14,6 +14,7 @@ import {
 export default function CapturePage() {
   const router = useRouter();
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const [mediaKind, setMediaKind] = useState<"voice" | "image">("image");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -59,10 +60,23 @@ export default function CapturePage() {
   }, [flushQueue, refreshPending]);
 
   async function submit() {
-    if (!text.trim()) return;
+    const hasText = Boolean(text.trim());
+    const hasUrl = Boolean(url.trim());
+    if (!hasText && !hasUrl) return;
     setSubmitting(true);
     setError(null);
-    const payload = { kind: "text" as const, rawText: text.trim() };
+
+    let payload: Parameters<typeof enqueuePendingCapture>[0];
+    if (hasUrl) {
+      payload = {
+        kind: "link" as const,
+        sourceUrl: url.trim(),
+        rawText: text.trim() || undefined,
+      };
+    } else {
+      payload = { kind: "text" as const, rawText: text.trim() };
+    }
+
     try {
       const res = await fetch("/api/captures", {
         method: "POST",
@@ -71,12 +85,14 @@ export default function CapturePage() {
       });
       if (!res.ok) throw new Error(await res.text());
       setText("");
+      setUrl("");
       router.push("/inbox");
     } catch (err) {
       if (isLikelyOfflineError(err)) {
         enqueuePendingCapture(payload);
         refreshPending();
         setText("");
+        setUrl("");
         setError("Saved offline — will sync when you are back online.");
         return;
       }
@@ -132,9 +148,19 @@ export default function CapturePage() {
           rows={6}
           className="w-full resize-none rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">URL (optional — saves as link)</label>
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://…"
+            className="w-full rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
         <div className="flex items-center gap-3">
-          <Button onClick={() => void submit()} disabled={submitting || !text.trim()}>
-            {submitting ? "Saving…" : "Save text"}
+          <Button onClick={() => void submit()} disabled={submitting || (!text.trim() && !url.trim())}>
+            {submitting ? "Saving…" : url.trim() ? "Save link" : "Save text"}
           </Button>
         </div>
       </section>

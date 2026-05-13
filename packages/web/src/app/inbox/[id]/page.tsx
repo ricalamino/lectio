@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { captures, connections, enrichments } from "@lectio/core/db/schema";
+import { RetryEnrichButton } from "@/components/retry-enrich-button";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,11 @@ export default async function CaptureDetailPage({ params }: Props) {
           {enrichment?.title?.trim() || "Untitled capture"}
         </h1>
         <p className="text-xs text-muted-foreground">{capture.capturedAt.toISOString()}</p>
+        {capture.status === "failed" ? (
+          <div className="pt-1">
+            <RetryEnrichButton captureId={capture.id} />
+          </div>
+        ) : null}
       </header>
 
       {enrichment?.summary ? (

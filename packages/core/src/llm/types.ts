@@ -51,6 +51,8 @@ export interface EmbeddingResult {
 export interface LlmProvider {
   readonly name: LlmProviderName;
   complete(options: CompleteOptions): Promise<CompletionResult>;
+  /** Yields text deltas as they arrive. Resolves fully when the stream ends. */
+  completeStream(options: CompleteOptions): AsyncIterable<string>;
   completeJson<T>(options: CompleteJsonOptions<T>): Promise<JsonResult<T>>;
   embed(options: EmbedOptions): Promise<EmbeddingResult>;
 }

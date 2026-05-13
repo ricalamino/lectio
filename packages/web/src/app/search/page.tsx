@@ -24,16 +24,50 @@ export default function SearchPage() {
   async function run() {
     if (!q.trim()) return;
     setLoading(true);
+    setAnswer(null);
+    setHits(null);
+    setCited(null);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-      const data = (await res.json()) as {
-        answer: string | null;
-        hits: Hit[];
-        cited?: Hit[];
-      };
-      setAnswer(data.answer);
-      setHits(data.hits);
-      setCited(data.cited ?? []);
+      const ct = res.headers.get("content-type") ?? "";
+      if (!ct.includes("text/event-stream")) {
+        // Fallback for empty-result non-streaming responses
+        const data = (await res.json()) as { answer: string | null; hits: Hit[]; cited?: Hit[] };
+        setAnswer(data.answer);
+        setHits(data.hits);
+        setCited(data.cited ?? []);
+        return;
+      }
+      if (!res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          const dataLine = line.startsWith("data: ") ? line.slice(6) : line.trim();
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine) as
+              | { type: "chunk"; text: string }
+              | { type: "done"; answer: string; hits: Hit[]; cited: Hit[] }
+              | { type: "error" };
+            if (event.type === "chunk") {
+              setAnswer((prev) => (prev ?? "") + event.text);
+            } else if (event.type === "done") {
+              setAnswer(event.answer);
+              setHits(event.hits);
+              setCited(event.cited);
+            }
+          } catch {
+            // skip malformed events
+          }
+        }
+      }
     } finally {
       setLoading(false);
     }

@@ -52,6 +52,29 @@ export class AnthropicProvider implements LlmProvider {
     }
   }
 
+  async *completeStream(options: CompleteOptions): AsyncIterable<string> {
+    const { system, messages } = splitSystem(options.messages);
+    try {
+      const stream = this.client.messages.stream({
+        model: options.model,
+        max_tokens: options.maxTokens ?? 1024,
+        temperature: options.temperature,
+        system,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      });
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          yield event.delta.text;
+        }
+      }
+    } catch (err) {
+      throw wrap(err);
+    }
+  }
+
   async completeJson<T>(options: CompleteJsonOptions<T>): Promise<JsonResult<T>> {
     const result = await this.complete({
       ...options,

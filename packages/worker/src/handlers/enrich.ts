@@ -201,7 +201,15 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
         model: deps.models.embed,
         input: `${json.data.title}\n\n${json.data.summary}\n\n${resolved.rawContent}`,
       });
-      embedding = embedded.embeddings[0] ?? null;
+      const candidate = embedded.embeddings[0] ?? null;
+      if (candidate !== null && candidate.length !== 1536) {
+        console.warn(
+          `[enrich] embedding dimension mismatch: got ${candidate.length}, schema expects 1536. ` +
+            `Run a migration to change vector(1536) if using a different model. Skipping embedding.`,
+        );
+      } else {
+        embedding = candidate;
+      }
     }
 
     await deps.db.insert(enrichments).values({
