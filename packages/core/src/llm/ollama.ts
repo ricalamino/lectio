@@ -72,6 +72,63 @@ export class OllamaProvider implements LlmProvider {
     };
   }
 
+  async *completeStream(options: CompleteOptions): AsyncIterable<string> {
+    const url = joinUrl(this.baseUrl, "/api/chat");
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: options.model,
+          messages: options.messages.map((m) => ({ role: m.role, content: m.content })),
+          stream: true,
+          options: {
+            temperature: options.temperature ?? 0.7,
+            num_predict: options.maxTokens ?? 1024,
+          },
+        }),
+        signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new LlmError(`Ollama request failed: ${url}`, {
+        provider: this.name,
+        kind: "timeout",
+        retryable: true,
+        cause: err,
+      });
+    }
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => "");
+      throw new LlmError(`Ollama HTTP ${res.status}: ${text.slice(0, 500)}`, {
+        provider: this.name,
+        kind: res.status === 401 || res.status === 403 ? "auth" : "unknown",
+        retryable: res.status === 429 || res.status >= 500,
+      });
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const obj = JSON.parse(trimmed) as { message?: { content?: string }; done?: boolean };
+          const text = obj.message?.content ?? "";
+          if (text) yield text;
+        } catch {
+          // skip malformed ndjson lines
+        }
+      }
+    }
+  }
+
   async completeJson<T>(options: CompleteJsonOptions<T>): Promise<JsonResult<T>> {
     const res = await this.postJson(
       "/api/chat",

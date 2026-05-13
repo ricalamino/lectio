@@ -45,6 +45,24 @@ export class OpenAIProvider implements LlmProvider {
     }
   }
 
+  async *completeStream(options: CompleteOptions): AsyncIterable<string> {
+    try {
+      const stream = await this.client.chat.completions.create({
+        model: options.model,
+        max_tokens: options.maxTokens,
+        temperature: options.temperature,
+        stream: true,
+        messages: options.messages.map((m) => ({ role: m.role, content: m.content })),
+      });
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content ?? "";
+        if (text) yield text;
+      }
+    } catch (err) {
+      throw wrap(err);
+    }
+  }
+
   async completeJson<T>(options: CompleteJsonOptions<T>): Promise<JsonResult<T>> {
     try {
       const response = await this.client.chat.completions.create({

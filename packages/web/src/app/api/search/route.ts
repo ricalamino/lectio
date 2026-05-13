@@ -157,6 +157,10 @@ async function embedQuery(q: string, config: ReturnType<typeof env>): Promise<nu
   return null;
 }
 
+function sseEvent(data: unknown): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim();
@@ -186,23 +190,43 @@ export async function GET(request: Request) {
   }
 
   const llm = createProvider(providerName(config.LECTIO_SEARCH_PROVIDER), config);
-  const answer = await llm.complete({
-    model: config.LECTIO_SEARCH_MODEL,
-    maxTokens: 600,
-    temperature: 0,
-    messages: [
-      { role: "system", content: SEARCH_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: buildSearchUserMessage({
-          query: q,
-          candidates: rows.map(toCandidate),
-        }),
-      },
-    ],
+  const messages: Parameters<typeof llm.complete>[0]["messages"] = [
+    { role: "system", content: SEARCH_SYSTEM_PROMPT },
+    { role: "user", content: buildSearchUserMessage({ query: q, candidates: rows.map(toCandidate) }) },
+  ];
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      let answerText = "";
+      try {
+        for await (const chunk of llm.completeStream({
+          model: config.LECTIO_SEARCH_MODEL,
+          maxTokens: 600,
+          temperature: 0,
+          messages,
+        })) {
+          answerText += chunk;
+          controller.enqueue(encoder.encode(sseEvent({ type: "chunk", text: chunk })));
+        }
+      } catch {
+        controller.enqueue(encoder.encode(sseEvent({ type: "error" })));
+        controller.close();
+        return;
+      }
+      const cited = resolveCitationHits(answerText, rows);
+      controller.enqueue(
+        encoder.encode(sseEvent({ type: "done", answer: answerText, hits: rows, cited })),
+      );
+      controller.close();
+    },
   });
 
-  const cited = resolveCitationHits(answer.text, rows);
-
-  return NextResponse.json({ answer: answer.text, hits: rows, cited });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }

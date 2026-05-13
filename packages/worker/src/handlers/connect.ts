@@ -3,9 +3,9 @@ import type { Database } from "@lectio/core/db";
 import { captures, connections, enrichments, rejectedConnectionEdges } from "@lectio/core/db/schema";
 import type { LlmProvider } from "@lectio/core/llm";
 import {
-  buildConnectionUserMessage,
+  buildConnectionBatchUserMessage,
   CONNECTION_SYSTEM_PROMPT,
-  connectionOutputSchema,
+  connectionBatchOutputSchema,
   normalizeConnectionType,
 } from "@lectio/core/prompts";
 import type { ConnectJob } from "../jobs.js";
@@ -251,47 +251,46 @@ export async function handleConnect(data: ConnectJob, deps: ConnectDeps): Promis
   if (candidates.length === 0) return;
 
   const newCapture = toCaptureRef(capture);
-  for (const candidate of candidates) {
-    const result = await deps.llm.completeJson({
-      model: deps.model,
-      maxTokens: 512,
-      temperature: 0,
-      messages: [
-        { role: "system", content: CONNECTION_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: buildConnectionUserMessage({
-            newCapture,
-            candidate: {
-              capture_id: candidate.id,
-              title: candidate.title,
-              tags: candidate.tags,
-              raw_content: [candidate.rawText, candidate.summary].filter(Boolean).join("\n\n"),
-              created_at: candidate.capturedAt.toISOString(),
-              similarity: candidate.similarity,
-            },
-          }),
-        },
-      ],
-      schema: connectionOutputSchema,
-    });
+  const batchCandidates = candidates.map((c) => ({
+    capture_id: c.id,
+    title: c.title,
+    tags: c.tags,
+    raw_content: [c.rawText, c.summary].filter(Boolean).join("\n\n"),
+    created_at: c.capturedAt.toISOString(),
+    similarity: c.similarity,
+  }));
 
-    if (
-      result.data.verdict !== "connect" ||
-      !result.data.type ||
-      result.data.confidence === "low"
-    ) {
+  // Single LLM call evaluates all candidates at once, replacing N serial calls.
+  const maxTokens = 256 + candidates.length * 120;
+  const result = await deps.llm.completeJson({
+    model: deps.model,
+    maxTokens,
+    temperature: 0,
+    messages: [
+      { role: "system", content: CONNECTION_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: buildConnectionBatchUserMessage({ newCapture, candidates: batchCandidates }),
+      },
+    ],
+    schema: connectionBatchOutputSchema,
+  });
+
+  for (const verdict of result.data) {
+    if (verdict.verdict !== "connect" || !verdict.type || verdict.confidence === "low") {
       continue;
     }
+    const candidate = candidates.find((c) => c.id === verdict.capture_id);
+    if (!candidate) continue;
 
     await deps.db
       .insert(connections)
       .values({
         fromCaptureId: capture.id,
         toCaptureId: candidate.id,
-        kind: normalizeConnectionType(result.data.type),
-        reason: result.data.reason,
-        confidence: result.data.confidence,
+        kind: normalizeConnectionType(verdict.type),
+        reason: verdict.reason,
+        confidence: verdict.confidence,
         score: candidate.similarity,
       })
       .onConflictDoNothing({

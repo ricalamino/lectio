@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { and, count, desc, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { captures } from "@lectio/core/db/schema";
+import { captures, enrichments } from "@lectio/core/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +52,18 @@ export default async function InboxPage({
 
   const [rows, totalRow] = await Promise.all([
     db()
-      .select()
+      .select({
+        id: captures.id,
+        kind: captures.kind,
+        status: captures.status,
+        rawText: captures.rawText,
+        capturedAt: captures.capturedAt,
+        title: enrichments.title,
+        summary: enrichments.summary,
+        tags: enrichments.tags,
+      })
       .from(captures)
+      .leftJoin(enrichments, eq(enrichments.captureId, captures.id))
       .where(whereClause)
       .orderBy(desc(captures.capturedAt), desc(captures.id))
       .limit(PAGE_SIZE + 1),
@@ -84,12 +94,38 @@ export default async function InboxPage({
           {visible.map((c) => (
             <li key={c.id} className="px-4 py-3 text-sm">
               <Link href={`/inbox/${c.id}`} className="block hover:bg-muted/40">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{c.kind}</span>
-                  <span className="text-muted-foreground text-xs">{c.status}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium leading-snug">
+                    {c.title ?? c.rawText?.slice(0, 80) ?? "Untitled capture"}
+                  </span>
+                  <span
+                    className={`shrink-0 text-xs ${
+                      c.status === "failed"
+                        ? "text-destructive"
+                        : c.status === "pending" || c.status === "enriching"
+                          ? "text-muted-foreground/60"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {c.status === "enriched" ? c.kind : c.status}
+                  </span>
                 </div>
-                {c.rawText ? (
+                {c.summary ? (
+                  <p className="mt-1 line-clamp-2 text-muted-foreground">{c.summary}</p>
+                ) : c.rawText && !c.title ? null : c.rawText ? (
                   <p className="mt-1 line-clamp-2 text-muted-foreground">{c.rawText}</p>
+                ) : null}
+                {Array.isArray(c.tags) && c.tags.length > 0 ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {(c.tags as string[]).slice(0, 4).map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 ) : null}
               </Link>
             </li>

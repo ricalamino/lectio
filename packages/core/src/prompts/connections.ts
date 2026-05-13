@@ -129,6 +129,22 @@ export function normalizeConnectionType(
   return TYPE_TO_DB[type] as ReturnType<typeof normalizeConnectionType>;
 }
 
+// ---------- Batch output schema ----------
+
+export const connectionBatchOutputSchema = z.array(
+  z
+    .object({
+      capture_id: z.string(),
+      verdict: connectionVerdictEnum,
+      type: connectionTypeEnum.nullable(),
+      reason: z.string().min(1),
+      confidence: connectionConfidenceEnum,
+    })
+    .strict(),
+);
+
+export type ConnectionBatchOutput = z.infer<typeof connectionBatchOutputSchema>;
+
 // ---------- User message builder ----------
 
 export interface ConnectionCaptureRef {
@@ -168,5 +184,45 @@ export function buildConnectionUserMessage(params: {
 [vector similarity: ${candidate.similarity.toFixed(2)}]
 
 Evaluate whether this deserves an explicit connection.
+`.trim();
+}
+
+export function buildConnectionBatchUserMessage(params: {
+  newCapture: {
+    id: string;
+    title: string;
+    tags: string[];
+    raw_content: string;
+    created_at: string;
+  };
+  candidates: Array<ConnectionCaptureRef & { similarity: number }>;
+}): string {
+  const { newCapture, candidates } = params;
+  const candidateBlocks = candidates
+    .map(
+      (c, i) => `
+### Candidate ${i + 1}
+[id: ${c.capture_id}]
+[date: ${c.created_at}]
+[title: ${c.title}]
+[tags: ${c.tags.join(", ")}]
+[content]: ${c.raw_content}
+[vector similarity: ${c.similarity.toFixed(2)}]`.trim(),
+    )
+    .join("\n\n");
+
+  return `
+## New capture
+[id: ${newCapture.id.slice(0, 8)}]
+[date: ${newCapture.created_at}]
+[title: ${newCapture.title}]
+[tags: ${newCapture.tags.join(", ")}]
+[content]: ${newCapture.raw_content}
+
+## Candidates (captured earlier)
+${candidateBlocks}
+
+Evaluate each candidate independently. Return a JSON array — one object per candidate, in the same order as listed above. Each object must include the full "capture_id" from the candidate. Example structure:
+[{"capture_id":"<full-uuid>","verdict":"...","type":"...","reason":"...","confidence":"..."},...]
 `.trim();
 }
