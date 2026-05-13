@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Sidebar } from "@/components/sidebar";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import { AuthSessionProvider } from "@/components/session-provider";
+import { EnrichmentProgress } from "@/components/enrichment-progress";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="md:pl-64">
             <div className="mx-auto max-w-3xl px-4 pt-16 pb-12 md:pt-8">{children}</div>
           </main>
+          <EnrichmentProgress />
           <ServiceWorkerRegister />
         </AuthSessionProvider>
       </body>

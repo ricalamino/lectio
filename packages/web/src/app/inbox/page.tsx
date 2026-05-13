@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, count, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { captures, enrichments } from "@lectio/core/db/schema";
 
@@ -7,8 +7,11 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
 
+type FilterKind = "all" | "processing" | "failed";
+
 interface SearchParams {
   cursor?: string;
+  filter?: string;
 }
 
 interface Cursor {
@@ -31,16 +34,30 @@ function decodeCursor(raw: string | undefined): Cursor | null {
   }
 }
 
+function parseFilter(raw: string | undefined): FilterKind {
+  if (raw === "processing" || raw === "failed") return raw;
+  return "all";
+}
+
+function filterClause(filter: FilterKind): SQL | undefined {
+  if (filter === "processing") {
+    return or(eq(captures.status, "pending"), eq(captures.status, "enriching"));
+  }
+  if (filter === "failed") {
+    return eq(captures.status, "failed");
+  }
+  return undefined;
+}
+
 export default async function InboxPage({
   searchParams,
 }: {
   searchParams?: SearchParams;
 }) {
   const cursor = decodeCursor(searchParams?.cursor);
+  const filter = parseFilter(searchParams?.filter);
 
-  // Keyset pagination: (capturedAt, id) strictly less than the cursor. Stable
-  // even when many captures share the same capturedAt (mass imports).
-  const whereClause = cursor
+  const cursorClause: SQL | undefined = cursor
     ? or(
         lt(captures.capturedAt, new Date(cursor.capturedAt)),
         and(
@@ -50,7 +67,13 @@ export default async function InboxPage({
       )
     : undefined;
 
-  const [rows, totalRow] = await Promise.all([
+  const statusFilter = filterClause(filter);
+  const whereClause =
+    cursorClause && statusFilter
+      ? and(cursorClause, statusFilter)
+      : cursorClause ?? statusFilter;
+
+  const [rows, totalRow, processingRow, failedRow] = await Promise.all([
     db()
       .select({
         id: captures.id,
@@ -68,27 +91,75 @@ export default async function InboxPage({
       .orderBy(desc(captures.capturedAt), desc(captures.id))
       .limit(PAGE_SIZE + 1),
     db().select({ value: count() }).from(captures),
+    db()
+      .select({ value: count() })
+      .from(captures)
+      .where(or(eq(captures.status, "pending"), eq(captures.status, "enriching"))),
+    db()
+      .select({ value: count() })
+      .from(captures)
+      .where(eq(captures.status, "failed")),
   ]);
 
   const hasNext = rows.length > PAGE_SIZE;
   const visible = hasNext ? rows.slice(0, PAGE_SIZE) : rows;
   const total = totalRow[0]?.value ?? 0;
+  const processingCount = processingRow[0]?.value ?? 0;
+  const failedCount = failedRow[0]?.value ?? 0;
   const last = visible[visible.length - 1];
   const nextCursor =
     hasNext && last
       ? encodeCursor({ capturedAt: last.capturedAt.toISOString(), id: last.id })
       : null;
 
+  const tabs: { label: string; filter: FilterKind; count?: number }[] = [
+    { label: "All", filter: "all", count: total },
+    { label: "Processing", filter: "processing", count: processingCount },
+    { label: "Failed", filter: "failed", count: failedCount },
+  ];
+
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-        <span className="text-muted-foreground text-xs">
-          {total} {total === 1 ? "capture" : "captures"} total
-        </span>
+      <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
+
+      {/* Filter tabs */}
+      <div className="flex gap-1 border-b border-border">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.filter}
+            href={tab.filter === "all" ? "/inbox" : `/inbox?filter=${tab.filter}`}
+            className={`flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm transition-colors ${
+              filter === tab.filter
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined && tab.count > 0 ? (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-xs ${
+                  tab.filter === "failed" && tab.count > 0
+                    ? "bg-destructive/20 text-destructive"
+                    : tab.filter === "processing" && tab.count > 0
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {tab.count}
+              </span>
+            ) : null}
+          </Link>
+        ))}
       </div>
+
       {visible.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Nothing yet. Start capturing.</p>
+        <p className="text-muted-foreground text-sm">
+          {filter === "failed"
+            ? "No failed captures."
+            : filter === "processing"
+              ? "No captures being processed."
+              : "Nothing yet. Start capturing."}
+        </p>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {visible.map((c) => (
@@ -134,7 +205,10 @@ export default async function InboxPage({
       )}
       <div className="flex items-center justify-between text-sm">
         {cursor ? (
-          <Link href="/inbox" className="text-muted-foreground hover:text-foreground underline">
+          <Link
+            href={filter === "all" ? "/inbox" : `/inbox?filter=${filter}`}
+            className="text-muted-foreground hover:text-foreground underline"
+          >
             ← Newest
           </Link>
         ) : (
@@ -142,7 +216,7 @@ export default async function InboxPage({
         )}
         {nextCursor ? (
           <Link
-            href={`/inbox?cursor=${nextCursor}`}
+            href={`/inbox?cursor=${nextCursor}${filter !== "all" ? `&filter=${filter}` : ""}`}
             className="text-muted-foreground hover:text-foreground underline"
           >
             Older →
