@@ -49,14 +49,18 @@ export default function CapturePage() {
 
   useEffect(() => {
     refreshPending();
-    const onOnline = () => {
-      void flushQueue();
-    };
+    const onOnline = () => void flushQueue();
+    // Also flush when the Background Sync service worker triggers a flush.
+    const onSwFlush = () => void flushQueue();
     window.addEventListener("online", onOnline);
+    window.addEventListener("lectio:flush-offline-queue", onSwFlush);
     if (typeof navigator !== "undefined" && navigator.onLine) {
       void flushQueue();
     }
-    return () => window.removeEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("lectio:flush-offline-queue", onSwFlush);
+    };
   }, [flushQueue, refreshPending]);
 
   async function submit() {

@@ -160,8 +160,8 @@ Items needed before a public Reddit post. Tackled in order.
 
 - [x] **Comparison table** — see [docs/comparison.md](docs/comparison.md)
       for honest comparison vs Obsidian, Notion, Logseq, Mem.ai.
-- [ ] **Markdown editor with preview** — current capture detail shows
-      raw text in a textarea. Even basic \`\`\`code\`\`\` rendering helps.
+- [x] **Markdown editor with preview** — tabbed Preview/Edit panel with
+      markdown rendering via `marked` (lazy-loaded).
 - [ ] **Background Sync PWA** — currently the offline queue is
       retried on page load. Register a Background Sync task so
       captures flush even when the tab is closed.
