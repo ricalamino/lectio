@@ -14,8 +14,8 @@ is that the bottleneck in building a "second brain" isn't retrieval, it's the
 friction of capture and organization.
 
 **How it works:**
-1. Capture anything — paste a link, type a thought, share from any app
-2. A background worker (running a LLM of your choice) extracts title, summary,
+1. Capture text or links — paste, type, or share from any app
+2. A background worker (running an LLM of your choice) extracts title, summary,
    tags, entities, and a vector embedding
 3. It finds connections between your captures (continuation, contradiction,
    pattern, same entity in new context)
@@ -29,8 +29,9 @@ friction of capture and organization.
 - MIT license, fully open source
 
 **Current state:** Alpha. Works well for personal use, rough edges remain
-(no multi-user, no rich text editor, voice/image capture is wired but
-undertested). See the README for the full ship checklist.
+(no multi-user, no rich text editor, text/links only for now — voice and
+image capture code is in the repo but not validated yet). See the README
+for the full ship checklist.
 
 GitHub: https://github.com/ricalamino/lectio
 
@@ -61,9 +62,11 @@ you can query your knowledge base from Claude Desktop.
 
 **Honest caveats:**
 - Alpha software, solo maintained
-- No rich text editor (plain text only)
+- Plain markdown only (no rich text editor)
+- Text and links only — voice and image capture exist in the codebase
+  but aren't validated yet, so I'm not claiming them as features
 - No multi-user
-- Voice/image capture is wired but not fully tested
+- No bulk import from other tools yet
 - Still missing a weekly digest / review feature
 
 Comparison with alternatives: [docs/comparison.md](docs/comparison.md)
@@ -84,7 +87,8 @@ Built a self-hosted knowledge base (Lectio) that runs entirely on local models
 via Ollama. No API keys needed.
 
 The workflow:
-1. Capture anything (text, links, eventually voice/images)
+1. Capture text or links (voice/image are scaffolded in the repo but not
+   validated yet — text-only for now)
 2. Worker runs Ollama to extract title, summary, tags, entities, and generate
    an embedding (nomic-embed-text)
 3. Finds connections between notes using vector similarity + LLM judgment

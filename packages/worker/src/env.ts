@@ -7,6 +7,12 @@ const optionalString = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : undefined));
 const optionalUrl = optionalString.pipe(z.string().url().optional());
+// Numbers from compose: empty string means "use the default", so pre-strip
+// before z.coerce.number(). Otherwise "" becomes NaN and validation fails.
+const optionalNumber = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : undefined));
 
 const schema = z.object({
   DATABASE_URL: z.string().url(),
@@ -42,11 +48,17 @@ const schema = z.object({
   // If you use a model with different output dimensions (e.g. nomic-embed-text
   // = 768) you must drop and recreate the embedding column first, then set
   // this to the matching value.
-  LECTIO_EMBED_DIMENSIONS: z.coerce.number().int().positive().default(1536),
+  LECTIO_EMBED_DIMENSIONS: optionalNumber.pipe(z.coerce.number().int().positive().default(1536)),
   // Maximum number of captures to enrich per UTC day. Unset = no cap.
   // Set this to avoid runaway costs if you accidentally import thousands of
   // items. Remaining jobs stay queued and process on the following day(s).
-  LECTIO_MAX_ENRICH_PER_DAY: z.coerce.number().int().positive().optional(),
+  LECTIO_MAX_ENRICH_PER_DAY: optionalNumber.pipe(z.coerce.number().int().positive().optional()),
+  // Hard cap on LLM calls per capture across pg-boss retries.
+  LECTIO_ENRICH_LLM_MAX_ATTEMPTS: optionalNumber.pipe(z.coerce.number().int().positive().default(3)),
+  // Wall-clock cap for a single enrichment LLM request.
+  LECTIO_ENRICH_LLM_TIMEOUT_MS: optionalNumber.pipe(z.coerce.number().int().positive().default(120_000)),
+  // Captures stuck in enriching longer than this are failed without another LLM call.
+  LECTIO_ENRICH_STALE_MS: optionalNumber.pipe(z.coerce.number().int().positive().default(600_000)),
 });
 
 export type WorkerEnv = z.infer<typeof schema>;

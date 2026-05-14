@@ -33,6 +33,7 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "@next/env": "14.2.15",
     "@types/marked": "^6.0.0",
     "@types/node": "20.16.10",
     "@types/react": "18.3.11",

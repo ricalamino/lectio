@@ -1,7 +1,7 @@
 import PgBoss from "pg-boss";
 import { gte, sql } from "drizzle-orm";
 import { createDatabase, type Database } from "@lectio/core/db";
-import { captures } from "@lectio/core/db/schema";
+import { enrichments } from "@lectio/core/db/schema";
 import { createProvider, type LlmProviderName } from "@lectio/core/llm";
 import { loadEnv } from "./env.js";
 import {
@@ -14,12 +14,15 @@ import { handleEnrich } from "./handlers/enrich.js";
 import { handleConnect } from "./handlers/connect.js";
 
 async function countEnrichedToday(db: Database): Promise<number> {
+  // Count enrichment rows created today (UTC), not capture updates. Updates
+  // also fire on status transitions and retry bookkeeping, so using captures
+  // would over-count and not reflect actual LLM spend.
   const startOfDay = new Date();
   startOfDay.setUTCHours(0, 0, 0, 0);
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(captures)
-    .where(gte(captures.updatedAt, startOfDay));
+    .from(enrichments)
+    .where(gte(enrichments.createdAt, startOfDay));
   return row?.count ?? 0;
 }
 
@@ -85,6 +88,9 @@ async function main() {
         transcribe,
         vision,
         s3,
+        enrichLlmMaxAttempts: env.LECTIO_ENRICH_LLM_MAX_ATTEMPTS,
+        enrichLlmTimeoutMs: env.LECTIO_ENRICH_LLM_TIMEOUT_MS,
+        enrichStaleMs: env.LECTIO_ENRICH_STALE_MS,
       });
       await boss.send(JOB_CONNECT, { captureId: data.captureId });
     }

@@ -3,9 +3,8 @@
 **Your second brain. Self-hosted. Bring your own model.**
 
 Lectio is an open-source capture-first knowledge app. You throw
-anything in — links, fleeting thoughts, voice notes, photos — and
-an LLM working in the background organizes, connects, and makes it
-all searchable in natural language.
+links and text in — and an LLM working in the background organizes,
+connects, and makes it all searchable in natural language.
 
 No folders. No tags to maintain. No structure to design. Just
 capture. Lectio figures out the rest.
@@ -118,12 +117,19 @@ Configure via `.env` — see `.env.example` for all variables and
 - [x] MCP server
 - [x] Export (JSON + Markdown ZIP)
 - [x] Delete / edit captures + retry enrichment
-- [ ] Voice note transcription (Whisper) — API wired, needs end-to-end testing
-- [ ] Image / OCR capture (OpenAI Vision) — API wired, needs end-to-end testing
-- [ ] Import (WhatsApp, Notion API, Logseq, Apple Notes, Markdown ZIP) — implemented, needs testing
 - [ ] Weekly digest
 - [ ] Multi-user
 - [ ] Plugin system
+
+### Not yet (code exists, not validated — don't rely on it)
+
+These paths are scaffolded in the codebase but haven't been
+end-to-end tested. Treat them as experimental hooks for contributors,
+not features.
+
+- Voice note transcription (Whisper)
+- Image / OCR capture (OpenAI Vision)
+- Bulk import (WhatsApp, Notion API, Logseq, Apple Notes, Markdown ZIP)
 
 ## Ship checklist
 
@@ -150,11 +156,9 @@ Items needed before a public Reddit post. Tackled in order.
 - [x] **Rate limiting / cost guardrails** — `LECTIO_MAX_ENRICH_PER_DAY`
       env var caps daily enrichments; jobs stay queued for tomorrow.
 - [x] **Troubleshooting guide** — see [docs/troubleshooting.md](docs/troubleshooting.md).
-- [ ] **Voice + image capture testing** — transcription and OCR paths
-      are wired up but haven't been end-to-end tested. Confirm or
-      remove from feature claims.
-- [ ] **Import testing** — WhatsApp / Notion / Logseq importers are
-      scaffolded. Confirm they work or remove from roadmap.
+- [x] **Voice + image + import scope tightened** — moved to "Not yet"
+      section in roadmap; removed from hero copy. Code remains for
+      contributors but is not claimed as a working feature.
 
 ### Polish
 

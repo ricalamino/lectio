@@ -10,6 +10,7 @@ import type {
   LlmProvider,
 } from "./types.js";
 import { LlmError } from "./types.js";
+import { DEFAULT_LLM_TIMEOUT_MS, createTimeoutSignal } from "./timeout.js";
 
 interface AnthropicConfig {
   apiKey: string;
@@ -29,14 +30,21 @@ export class AnthropicProvider implements LlmProvider {
 
   async complete(options: CompleteOptions): Promise<CompletionResult> {
     const { system, messages } = splitSystem(options.messages);
+    const { signal, cleanup, onAbort } = createTimeoutSignal(
+      options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
+      this.name,
+    );
     try {
-      const response = await this.client.messages.create({
-        model: options.model,
-        max_tokens: options.maxTokens ?? 1024,
-        temperature: options.temperature,
-        system,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-      });
+      const response = await this.client.messages.create(
+        {
+          model: options.model,
+          max_tokens: options.maxTokens ?? 1024,
+          temperature: options.temperature,
+          system,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        },
+        { signal },
+      );
       const text = response.content
         .map((block) => (block.type === "text" ? block.text : ""))
         .join("");
@@ -48,7 +56,10 @@ export class AnthropicProvider implements LlmProvider {
         provider: this.name,
       };
     } catch (err) {
+      if (signal.aborted) onAbort();
       throw wrap(err);
+    } finally {
+      cleanup();
     }
   }
 
@@ -95,7 +106,7 @@ export class AnthropicProvider implements LlmProvider {
       throw new LlmError("Anthropic returned non-JSON output", {
         provider: this.name,
         kind: "parse",
-        retryable: true,
+        retryable: false,
         cause: err,
       });
     }
@@ -104,7 +115,7 @@ export class AnthropicProvider implements LlmProvider {
       throw new LlmError("Anthropic JSON failed schema validation", {
         provider: this.name,
         kind: "parse",
-        retryable: true,
+        retryable: false,
         cause: validated.error,
       });
     }
@@ -157,6 +168,14 @@ function stripFences(text: string): string {
 }
 
 function wrap(err: unknown): LlmError {
+  if (err instanceof Anthropic.APIUserAbortError) {
+    return new LlmError("Anthropic request aborted (timeout)", {
+      provider: "anthropic",
+      kind: "timeout",
+      retryable: false,
+      cause: err,
+    });
+  }
   if (err instanceof Anthropic.APIError) {
     const status = err.status ?? 0;
     const kind =
@@ -164,9 +183,7 @@ function wrap(err: unknown): LlmError {
         ? "auth"
         : status === 429
           ? "rate_limit"
-          : status >= 500
-            ? "unknown"
-            : "unknown";
+          : "unknown";
     const retryable = status === 429 || status >= 500;
     return new LlmError(`Anthropic API error: ${err.message}`, {
       provider: "anthropic",

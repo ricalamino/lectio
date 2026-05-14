@@ -31,6 +31,11 @@ RUN pnpm --filter @lectio/core build
 RUN pnpm --filter @lectio/worker build
 RUN pnpm --filter @lectio/mcp-server build
 ENV NEXT_TELEMETRY_DISABLED=1
+# Next may evaluate DB-backed route handlers during `next build`; placeholders
+# satisfy env validation without baking real secrets into the image.
+ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
+ENV AUTH_SECRET=build-time-placeholder-secret
+ENV ADMIN_PASSWORD=build
 RUN pnpm --filter @lectio/web build
 
 # ---- deploy: produce self-contained dist trees for worker and mcp-server --

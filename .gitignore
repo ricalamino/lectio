@@ -6,6 +6,7 @@ coverage
 *.log
 .DS_Store
 .env
+.env copy
 .env.local
 .env.*.local
 !.env.example

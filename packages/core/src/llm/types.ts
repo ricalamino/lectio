@@ -18,6 +18,8 @@ export interface CompleteOptions {
   messages: LlmMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** Wall-clock cap for the provider request. Defaults per provider. */
+  timeoutMs?: number;
 }
 
 export interface CompleteJsonOptions<T> extends CompleteOptions {

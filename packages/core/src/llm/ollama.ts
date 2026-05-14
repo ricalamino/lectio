@@ -153,7 +153,7 @@ export class OllamaProvider implements LlmProvider {
       throw new LlmError("Ollama returned non-JSON output", {
         provider: this.name,
         kind: "parse",
-        retryable: true,
+        retryable: false,
         cause: err,
       });
     }
@@ -162,7 +162,7 @@ export class OllamaProvider implements LlmProvider {
       throw new LlmError("Ollama JSON failed schema validation", {
         provider: this.name,
         kind: "parse",
-        retryable: true,
+        retryable: false,
         cause: validated.error,
       });
     }

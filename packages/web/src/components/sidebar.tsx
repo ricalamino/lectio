@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileDown, FolderInput, GitBranch, Inbox, LogOut, Menu, Plus, Search } from "lucide-react";
+import { BookMarked, FileDown, FolderInput, GitBranch, Inbox, LogOut, Menu, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -39,9 +39,15 @@ export function Sidebar() {
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex h-16 items-center px-6 text-lg font-semibold">
-          Lectio
-        </div>
+        <Link
+          href="/inbox"
+          className="flex h-16 items-center gap-2 px-6 text-lg font-semibold tracking-tight"
+        >
+          <BookMarked className="h-5 w-5 text-primary" />
+          <span>
+            Lectio<span className="text-muted-foreground/60">.</span>
+          </span>
+        </Link>
         <nav className="flex flex-col gap-1 px-3">
           {items.map((item) => {
             const active = pathname?.startsWith(item.href);

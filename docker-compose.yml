@@ -51,6 +51,8 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LECTIO_ENRICH_PROVIDER: ${LECTIO_ENRICH_PROVIDER:-anthropic}
+      LECTIO_ENRICH_MODEL: ${LECTIO_ENRICH_MODEL:-claude-sonnet-4-6}
       LECTIO_SEARCH_PROVIDER: ${LECTIO_SEARCH_PROVIDER:-anthropic}
       LECTIO_SEARCH_MODEL: ${LECTIO_SEARCH_MODEL:-claude-sonnet-4-6}
       LECTIO_EMBED_PROVIDER: ${LECTIO_EMBED_PROVIDER:-}
@@ -90,6 +92,12 @@ services:
       LECTIO_TRANSCRIBE_API_KEY: ${LECTIO_TRANSCRIBE_API_KEY:-}
       LECTIO_WHISPER_MODEL: ${LECTIO_WHISPER_MODEL:-whisper-1}
       LECTIO_VISION_MODEL: ${LECTIO_VISION_MODEL:-gpt-4o-mini}
+      # Cost guardrails. Without these the worker has no daily budget and a
+      # bad batch can drain tokens. Tune per deployment.
+      LECTIO_MAX_ENRICH_PER_DAY: ${LECTIO_MAX_ENRICH_PER_DAY:-}
+      LECTIO_ENRICH_LLM_MAX_ATTEMPTS: ${LECTIO_ENRICH_LLM_MAX_ATTEMPTS:-}
+      LECTIO_ENRICH_LLM_TIMEOUT_MS: ${LECTIO_ENRICH_LLM_TIMEOUT_MS:-}
+      LECTIO_ENRICH_STALE_MS: ${LECTIO_ENRICH_STALE_MS:-}
       # The web container has already run migrations by the time we start.
       LECTIO_SKIP_MIGRATE: "1"
     restart: unless-stopped

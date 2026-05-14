@@ -29,7 +29,7 @@ function start(): Promise<PgBoss> {
 
 export async function publishEnrich(data: EnrichJobData): Promise<string | null> {
   const boss = await start();
-  return boss.send(JOB_ENRICH, data, { retryLimit: 5, retryBackoff: true });
+  return boss.send(JOB_ENRICH, data, { retryLimit: 2, retryBackoff: true });
 }
 
 export async function publishConnect(data: ConnectJobData): Promise<string | null> {

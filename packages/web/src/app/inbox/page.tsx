@@ -1,13 +1,16 @@
 import Link from "next/link";
-import { and, count, desc, eq, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { captures, enrichments } from "@lectio/core/db/schema";
+import { getCaptureStatusCounts } from "@/lib/capture-status-counts";
+import { InboxFilterTabs, type InboxFilterKind } from "@/components/inbox-filter-tabs";
+import { RetryAllFailedEnrichment } from "@/components/retry-all-failed-enrichment";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
 
-type FilterKind = "all" | "processing" | "failed";
+type FilterKind = InboxFilterKind;
 
 interface SearchParams {
   cursor?: string;
@@ -73,7 +76,7 @@ export default async function InboxPage({
       ? and(cursorClause, statusFilter)
       : cursorClause ?? statusFilter;
 
-  const [rows, totalRow, processingRow, failedRow] = await Promise.all([
+  const [rows, statusCounts] = await Promise.all([
     db()
       .select({
         id: captures.id,
@@ -90,67 +93,29 @@ export default async function InboxPage({
       .where(whereClause)
       .orderBy(desc(captures.capturedAt), desc(captures.id))
       .limit(PAGE_SIZE + 1),
-    db().select({ value: count() }).from(captures),
-    db()
-      .select({ value: count() })
-      .from(captures)
-      .where(or(eq(captures.status, "pending"), eq(captures.status, "enriching"))),
-    db()
-      .select({ value: count() })
-      .from(captures)
-      .where(eq(captures.status, "failed")),
+    getCaptureStatusCounts(db()),
   ]);
 
   const hasNext = rows.length > PAGE_SIZE;
   const visible = hasNext ? rows.slice(0, PAGE_SIZE) : rows;
-  const total = totalRow[0]?.value ?? 0;
-  const processingCount = processingRow[0]?.value ?? 0;
-  const failedCount = failedRow[0]?.value ?? 0;
   const last = visible[visible.length - 1];
   const nextCursor =
     hasNext && last
       ? encodeCursor({ capturedAt: last.capturedAt.toISOString(), id: last.id })
       : null;
 
-  const tabs: { label: string; filter: FilterKind; count?: number }[] = [
-    { label: "All", filter: "all", count: total },
-    { label: "Processing", filter: "processing", count: processingCount },
-    { label: "Failed", filter: "failed", count: failedCount },
-  ];
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 border-b border-border">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.filter}
-            href={tab.filter === "all" ? "/inbox" : `/inbox?filter=${tab.filter}`}
-            className={`flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm transition-colors ${
-              filter === tab.filter
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && tab.count > 0 ? (
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-xs ${
-                  tab.filter === "failed" && tab.count > 0
-                    ? "bg-destructive/20 text-destructive"
-                    : tab.filter === "processing" && tab.count > 0
-                      ? "bg-muted text-muted-foreground"
-                      : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {tab.count}
-              </span>
-            ) : null}
-          </Link>
-        ))}
-      </div>
+      <InboxFilterTabs activeFilter={filter} initialCounts={statusCounts} />
+
+      {filter === "failed" ? (
+        <div className="flex justify-end">
+          <RetryAllFailedEnrichment failedCount={statusCounts.failed} />
+        </div>
+      ) : null}
 
       {visible.length === 0 ? (
         <p className="text-muted-foreground text-sm">

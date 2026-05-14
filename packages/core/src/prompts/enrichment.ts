@@ -43,6 +43,11 @@ connectable** later.
 
 ## Output format
 
+Return exactly ONE JSON object for the entire capture, even
+when the input has multiple bullet sections or topics. Never
+return an array. If several themes appear, synthesize one
+combined title, summary, and tag set for the whole capture.
+
 Return ONLY a valid JSON object, with no markdown, no
 comments, no text before or after. Schema:
 
@@ -166,6 +171,122 @@ export const enrichmentContentTypeEnum = z.enum([
 
 const stringArray = z.array(z.string().min(1));
 
+const entityKeys = ["people", "organizations", "projects", "dates", "places"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeContentType(value: unknown): z.infer<typeof enrichmentContentTypeEnum> {
+  const parsed = enrichmentContentTypeEnum.safeParse(value);
+  return parsed.success ? parsed.data : "other";
+}
+
+function normalizeSuggestedAction(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return null;
+  const verb = typeof value.verb === "string" ? value.verb.trim() : "";
+  const what = typeof value.what === "string" ? value.what.trim() : "";
+  if (!verb || !what) return null;
+  const whenRaw = value.when;
+  if (whenRaw === null || whenRaw === undefined || whenRaw === "") return { verb, what, when: null };
+  if (typeof whenRaw !== "string") return { verb, what, when: null };
+  const when = whenRaw.trim();
+  return { verb, what, when: when.length > 0 ? when : null };
+}
+
+function normalizeEntities(value: unknown): Record<string, string[]> {
+  if (!isRecord(value)) return {};
+  const out: Partial<Record<(typeof entityKeys)[number], string[]>> = {};
+  for (const key of entityKeys) {
+    const list = value[key];
+    if (!Array.isArray(list)) continue;
+    const clean = list
+      .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      .map((entry) => entry.trim());
+    if (clean.length > 0) out[key] = clean;
+  }
+  return out;
+}
+
+function mergeEntityLists(items: Record<string, unknown>[], key: (typeof entityKeys)[number]): string[] | undefined {
+  const merged = new Set<string>();
+  for (const item of items) {
+    if (!isRecord(item.entities)) continue;
+    const list = item.entities[key];
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      if (typeof entry === "string" && entry.trim().length > 0) merged.add(entry.trim());
+    }
+  }
+  return merged.size > 0 ? [...merged] : undefined;
+}
+
+function mergeEnrichmentItems(items: unknown[]): Record<string, unknown> {
+  const records = items.filter(isRecord);
+  if (records.length === 0) return {};
+
+  const titles = records
+    .map((item) => item.title)
+    .filter((title): title is string => typeof title === "string" && title.trim().length > 0)
+    .map((title) => title.trim());
+  const summaries = records
+    .map((item) => item.summary)
+    .filter((summary): summary is string => typeof summary === "string" && summary.trim().length > 0)
+    .map((summary) => summary.trim());
+  const tags = new Set<string>();
+  for (const item of records) {
+    if (!Array.isArray(item.tags)) continue;
+    for (const tag of item.tags) {
+      if (typeof tag === "string" && tag.trim().length > 0) tags.add(tag.trim());
+    }
+  }
+
+  const entities: Record<string, string[]> = {};
+  for (const key of entityKeys) {
+    const merged = mergeEntityLists(records, key);
+    if (merged) entities[key] = merged;
+  }
+
+  const suggested_action =
+    records.map((item) => normalizeSuggestedAction(item.suggested_action)).find((value) => value !== null) ?? null;
+
+  const contentTypes = records.map((item) => normalizeContentType(item.content_type)).filter((value) => value !== "other");
+  const content_type = contentTypes.length === 1 ? contentTypes[0]! : "other";
+
+  return {
+    title: titles[0] ?? "untitled capture",
+    summary: summaries.length > 0 ? summaries.join(" ") : (titles[0] ?? "untitled capture"),
+    tags: [...tags],
+    entities,
+    suggested_action,
+    content_type,
+  };
+}
+
+function normalizeEnrichmentPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return {};
+    if (value.length === 1) value = value[0];
+    else return mergeEnrichmentItems(value);
+  }
+  if (!isRecord(value)) return value;
+
+  return {
+    ...value,
+    title: typeof value.title === "string" ? value.title.trim() : value.title,
+    summary: typeof value.summary === "string" ? value.summary.trim() : value.summary,
+    tags: Array.isArray(value.tags)
+      ? value.tags
+          .filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+          .map((tag) => tag.trim())
+      : value.tags,
+    entities: normalizeEntities(value.entities),
+    suggested_action: normalizeSuggestedAction(value.suggested_action),
+    content_type: normalizeContentType(value.content_type),
+  };
+}
+
 export const enrichmentEntitiesSchema = z
   .object({
     people: stringArray.optional(),
@@ -184,7 +305,7 @@ export const enrichmentSuggestedActionSchema = z
   })
   .strict();
 
-export const enrichmentOutputSchema = z
+const enrichmentOutputObjectSchema = z
   .object({
     title: z.string().min(1),
     summary: z.string().min(1),
@@ -195,7 +316,12 @@ export const enrichmentOutputSchema = z
   })
   .strict();
 
-export type EnrichmentOutput = z.infer<typeof enrichmentOutputSchema>;
+export type EnrichmentOutput = z.infer<typeof enrichmentOutputObjectSchema>;
+
+export const enrichmentOutputSchema = z.preprocess(
+  normalizeEnrichmentPayload,
+  enrichmentOutputObjectSchema,
+) as z.ZodType<EnrichmentOutput>;
 
 // ---------- User message builder ----------
 

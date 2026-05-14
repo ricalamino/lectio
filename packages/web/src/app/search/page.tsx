@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Bookmark, BookmarkCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchAnswerText } from "@/components/search-answer";
 
@@ -14,12 +15,32 @@ interface Hit {
   mediaKey: string | null;
 }
 
+type SaveState = "idle" | "saving" | "saved";
+
 export default function SearchPage() {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [cited, setCited] = useState<Hit[] | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  async function saveAsCapture() {
+    if (!answer || !q.trim()) return;
+    setSaveState("saving");
+    try {
+      const text = `Q: ${q.trim()}\n\nA: ${answer.trim()}`;
+      const res = await fetch("/api/captures", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: "text", rawText: text, metadata: { source: "search", searchQuery: q.trim() } }),
+      });
+      if (res.ok) setSaveState("saved");
+      else setSaveState("idle");
+    } catch {
+      setSaveState("idle");
+    }
+  }
 
   async function run() {
     if (!q.trim()) return;
@@ -27,6 +48,7 @@ export default function SearchPage() {
     setAnswer(null);
     setHits(null);
     setCited(null);
+    setSaveState("idle");
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       const ct = res.headers.get("content-type") ?? "";
@@ -90,7 +112,21 @@ export default function SearchPage() {
       </div>
       {answer ? (
         <div className="rounded-md border border-border px-4 py-3 text-sm leading-6">
-          <SearchAnswerText text={answer} />
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <SearchAnswerText text={answer} />
+            <button
+              onClick={() => void saveAsCapture()}
+              disabled={saveState === "saving" || saveState === "saved"}
+              title={saveState === "saved" ? "Saved" : "Save as Capture"}
+              className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            >
+              {saveState === "saved" ? (
+                <BookmarkCheck className="h-4 w-4 text-green-500" />
+              ) : (
+                <Bookmark className="h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
       ) : null}
       {cited && cited.length > 0 ? (

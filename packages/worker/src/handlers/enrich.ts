@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Database } from "@lectio/core/db";
 import type { Capture } from "@lectio/core/db/schema";
 import { captures, enrichments } from "@lectio/core/db/schema";
@@ -34,6 +34,9 @@ export interface EnrichDeps {
   /** OpenAI vision (image OCR). */
   vision: VisionOpenAiConfig | null;
   s3: S3ReadConfig | null;
+  enrichLlmMaxAttempts: number;
+  enrichLlmTimeoutMs: number;
+  enrichStaleMs: number;
 }
 
 function mediaTypeFor(kind: string): EnrichmentMediaType {
@@ -127,12 +130,59 @@ async function resolveTextFromMedia(capture: Capture, deps: EnrichDeps): Promise
   return { rawContent: "", transcript: null };
 }
 
+function captureMetadata(capture: Capture): Record<string, unknown> {
+  if (typeof capture.metadata === "object" && capture.metadata !== null) {
+    return { ...(capture.metadata as Record<string, unknown>) };
+  }
+  return {};
+}
+
+function readEnrichLlmAttempts(metadata: unknown): number {
+  if (!metadata || typeof metadata !== "object") return 0;
+  const attempts = (metadata as { enrichLlmAttempts?: unknown }).enrichLlmAttempts;
+  return typeof attempts === "number" && Number.isFinite(attempts) && attempts >= 0
+    ? Math.floor(attempts)
+    : 0;
+}
+
+async function markEnrichFailed(
+  deps: EnrichDeps,
+  capture: Capture,
+  enrichError: string,
+  enrichErrorDetail?: string,
+  metadataOverrides?: Record<string, unknown>,
+): Promise<void> {
+  const metadata: Record<string, unknown> = {
+    ...captureMetadata(capture),
+    ...metadataOverrides,
+    enrichError,
+  };
+  if (enrichErrorDetail) metadata.enrichErrorDetail = enrichErrorDetail;
+  await deps.db
+    .update(captures)
+    .set({
+      status: "failed",
+      updatedAt: new Date(),
+      metadata,
+    })
+    .where(eq(captures.id, capture.id));
+}
+
 export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<void> {
   const [capture] = await deps.db
     .select()
     .from(captures)
     .where(eq(captures.id, data.captureId));
   if (!capture) return;
+
+  if (
+    capture.status === "enriching" &&
+    deps.enrichStaleMs > 0 &&
+    Date.now() - capture.updatedAt.getTime() > deps.enrichStaleMs
+  ) {
+    await markEnrichFailed(deps, capture, "enrich_stale");
+    return;
+  }
 
   let resolved: { rawContent: string; transcript: string | null };
   try {
@@ -180,10 +230,29 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
     .set({ status: "enriching", updatedAt: new Date() })
     .where(eq(captures.id, capture.id));
 
+  const attempts = readEnrichLlmAttempts(capture.metadata);
+  if (attempts >= deps.enrichLlmMaxAttempts) {
+    await markEnrichFailed(deps, capture, "llm_attempts_exceeded");
+    return;
+  }
+
+  const nextAttempts = attempts + 1;
+  await deps.db
+    .update(captures)
+    .set({
+      updatedAt: new Date(),
+      metadata: {
+        ...captureMetadata(capture),
+        enrichLlmAttempts: nextAttempts,
+      },
+    })
+    .where(eq(captures.id, capture.id));
+
   try {
     const json = await deps.llm.completeJson({
       model: deps.models.enrich,
       maxTokens: 1024,
+      timeoutMs: deps.enrichLlmTimeoutMs,
       messages: [
         { role: "system", content: ENRICHMENT_SYSTEM_PROMPT },
         {
@@ -214,21 +283,40 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
       }
     }
 
-    await deps.db.insert(enrichments).values({
-      captureId: capture.id,
-      title: json.data.title,
-      summary: json.data.summary,
-      tags: json.data.tags,
-      entities: json.data.entities,
-      suggestedAction: json.data.suggested_action,
-      contentType: json.data.content_type,
-      transcript: resolved.transcript,
-      embedding,
-      modelProvider: deps.llm.name satisfies LlmProviderName,
-      modelName: json.model,
-      tokensIn: json.tokensIn,
-      tokensOut: json.tokensOut,
-    });
+    await deps.db
+      .insert(enrichments)
+      .values({
+        captureId: capture.id,
+        title: json.data.title,
+        summary: json.data.summary,
+        tags: json.data.tags,
+        entities: json.data.entities,
+        suggestedAction: json.data.suggested_action,
+        contentType: json.data.content_type,
+        transcript: resolved.transcript,
+        embedding,
+        modelProvider: deps.llm.name satisfies LlmProviderName,
+        modelName: json.model,
+        tokensIn: json.tokensIn,
+        tokensOut: json.tokensOut,
+      })
+      .onConflictDoUpdate({
+        target: enrichments.captureId,
+        set: {
+          title: sql`excluded.title`,
+          summary: sql`excluded.summary`,
+          tags: sql`excluded.tags`,
+          entities: sql`excluded.entities`,
+          suggestedAction: sql`excluded.suggested_action`,
+          contentType: sql`excluded.content_type`,
+          transcript: sql`excluded.transcript`,
+          embedding: sql`excluded.embedding`,
+          modelProvider: sql`excluded.model_provider`,
+          modelName: sql`excluded.model_name`,
+          tokensIn: sql`excluded.tokens_in`,
+          tokensOut: sql`excluded.tokens_out`,
+        },
+      });
 
     await deps.db
       .update(captures)
@@ -243,22 +331,15 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
         : err instanceof Error
           ? err.message
           : String(err);
-    await deps.db
-      .update(captures)
-      .set({
-        status: "failed",
-        updatedAt: new Date(),
-        metadata: {
-          ...(typeof capture.metadata === "object" && capture.metadata !== null
-            ? capture.metadata
-            : {}),
-          enrichError,
-          enrichErrorDetail,
-        },
-      })
-      .where(eq(captures.id, capture.id));
+    await markEnrichFailed(deps, capture, enrichError, enrichErrorDetail, {
+      enrichLlmAttempts: nextAttempts,
+    });
     if (isNonRetryable) {
       console.error("[enrich] non-retryable LLM failure", err);
+      return;
+    }
+    if (nextAttempts >= deps.enrichLlmMaxAttempts) {
+      console.error("[enrich] enrichment LLM attempt budget exhausted", err);
       return;
     }
     throw err;

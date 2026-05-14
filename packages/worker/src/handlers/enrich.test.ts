@@ -50,9 +50,11 @@ function makeDb(capture: ReturnType<typeof makeCapture> | null) {
       }),
     }),
     insert: () => ({
-      values: (values: Record<string, unknown>) => {
-        inserts.push(values);
-      },
+      values: (values: Record<string, unknown>) => ({
+        onConflictDoUpdate: () => {
+          inserts.push(values);
+        },
+      }),
     }),
   };
 
@@ -97,6 +99,9 @@ function makeDeps(overrides: Partial<EnrichDeps> = {}): EnrichDeps {
     transcribe: null,
     vision: null,
     s3: null,
+    enrichLlmMaxAttempts: 3,
+    enrichLlmTimeoutMs: 120_000,
+    enrichStaleMs: 600_000,
     ...overrides,
   };
 }
@@ -212,5 +217,46 @@ describe("handleEnrich", () => {
     const deps = makeDeps({ db: db as unknown as EnrichDeps["db"], llm });
 
     await expect(handleEnrich({ captureId: "cap-1" }, deps)).rejects.toBeInstanceOf(LlmError);
+  });
+
+  it("does not call the LLM when the attempt budget is exhausted", async () => {
+    const capture = makeCapture({
+      rawText: "hello",
+      metadata: { enrichLlmAttempts: 3 },
+    });
+    const { db, updates } = makeDb(capture);
+    const llm = makeLlm();
+    const deps = makeDeps({
+      db: db as unknown as EnrichDeps["db"],
+      llm,
+      enrichLlmMaxAttempts: 3,
+    });
+
+    await handleEnrich({ captureId: "cap-1" }, deps);
+
+    expect(llm.completeJson).not.toHaveBeenCalled();
+    const failUpdate = updates.find((u) => u.status === "failed");
+    expect((failUpdate?.metadata as Record<string, unknown>)?.enrichError).toBe("llm_attempts_exceeded");
+  });
+
+  it("fails stale enriching captures without calling the LLM", async () => {
+    const capture = makeCapture({
+      rawText: "hello",
+      status: "enriching",
+      updatedAt: new Date(Date.now() - 3_600_000),
+    });
+    const { db, updates } = makeDb(capture);
+    const llm = makeLlm();
+    const deps = makeDeps({
+      db: db as unknown as EnrichDeps["db"],
+      llm,
+      enrichStaleMs: 600_000,
+    });
+
+    await handleEnrich({ captureId: "cap-1" }, deps);
+
+    expect(llm.completeJson).not.toHaveBeenCalled();
+    const failUpdate = updates.find((u) => u.status === "failed");
+    expect((failUpdate?.metadata as Record<string, unknown>)?.enrichError).toBe("enrich_stale");
   });
 });

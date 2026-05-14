@@ -2,12 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
-
-interface ProcessingStatus {
-  pending: number;
-  enriching: number;
-  failed: number;
-}
+import type { CaptureStatusCounts } from "@/lib/capture-status-counts";
 
 type BannerState = "hidden" | "processing" | "done" | "failed_only";
 
@@ -15,7 +10,7 @@ const POLL_INTERVAL_MS = 3000;
 const DONE_VISIBLE_MS = 4000;
 
 export function EnrichmentProgress() {
-  const [status, setStatus] = useState<ProcessingStatus | null>(null);
+  const [status, setStatus] = useState<CaptureStatusCounts | null>(null);
   const [bannerState, setBannerState] = useState<BannerState>("hidden");
   const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,10 +27,10 @@ export function EnrichmentProgress() {
     try {
       const res = await fetch("/api/captures/processing");
       if (!res.ok) return;
-      const data = (await res.json()) as ProcessingStatus;
+      const data = (await res.json()) as CaptureStatusCounts;
       setStatus(data);
 
-      const active = data.pending + data.enriching;
+      const active = data.processing;
 
       if (active > 0) {
         wasProcessing.current = true;
@@ -78,7 +73,7 @@ export function EnrichmentProgress() {
 
   if (bannerState === "hidden" || !status) return null;
 
-  const active = status.pending + status.enriching;
+  const active = status.processing;
 
   return (
     <div

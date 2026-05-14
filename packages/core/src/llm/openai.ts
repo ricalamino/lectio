@@ -9,6 +9,7 @@ import type {
   LlmProvider,
 } from "./types.js";
 import { LlmError } from "./types.js";
+import { DEFAULT_LLM_TIMEOUT_MS, createTimeoutSignal } from "./timeout.js";
 
 interface OpenAIConfig {
   apiKey: string;
@@ -24,13 +25,20 @@ export class OpenAIProvider implements LlmProvider {
   }
 
   async complete(options: CompleteOptions): Promise<CompletionResult> {
+    const { signal, cleanup, onAbort } = createTimeoutSignal(
+      options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
+      this.name,
+    );
     try {
-      const response = await this.client.chat.completions.create({
-        model: options.model,
-        max_tokens: options.maxTokens,
-        temperature: options.temperature,
-        messages: options.messages.map((m) => ({ role: m.role, content: m.content })),
-      });
+      const response = await this.client.chat.completions.create(
+        {
+          model: options.model,
+          max_tokens: options.maxTokens,
+          temperature: options.temperature,
+          messages: options.messages.map((m) => ({ role: m.role, content: m.content })),
+        },
+        { signal },
+      );
       const choice = response.choices[0];
       const text = choice?.message?.content ?? "";
       return {
@@ -41,7 +49,10 @@ export class OpenAIProvider implements LlmProvider {
         provider: this.name,
       };
     } catch (err) {
+      if (signal.aborted) onAbort();
       throw wrap(err);
+    } finally {
+      cleanup();
     }
   }
 
@@ -64,14 +75,21 @@ export class OpenAIProvider implements LlmProvider {
   }
 
   async completeJson<T>(options: CompleteJsonOptions<T>): Promise<JsonResult<T>> {
+    const { signal, cleanup, onAbort } = createTimeoutSignal(
+      options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
+      this.name,
+    );
     try {
-      const response = await this.client.chat.completions.create({
-        model: options.model,
-        max_tokens: options.maxTokens,
-        temperature: options.temperature,
-        response_format: { type: "json_object" },
-        messages: options.messages.map((m) => ({ role: m.role, content: m.content })),
-      });
+      const response = await this.client.chat.completions.create(
+        {
+          model: options.model,
+          max_tokens: options.maxTokens,
+          temperature: options.temperature,
+          response_format: { type: "json_object" },
+          messages: options.messages.map((m) => ({ role: m.role, content: m.content })),
+        },
+        { signal },
+      );
       const choice = response.choices[0];
       const raw = choice?.message?.content ?? "";
       let parsed: unknown;
@@ -81,7 +99,7 @@ export class OpenAIProvider implements LlmProvider {
         throw new LlmError("OpenAI returned non-JSON output", {
           provider: this.name,
           kind: "parse",
-          retryable: true,
+          retryable: false,
           cause: err,
         });
       }
@@ -90,7 +108,7 @@ export class OpenAIProvider implements LlmProvider {
         throw new LlmError("OpenAI JSON failed schema validation", {
           provider: this.name,
           kind: "parse",
-          retryable: true,
+          retryable: false,
           cause: validated.error,
         });
       }
@@ -103,8 +121,11 @@ export class OpenAIProvider implements LlmProvider {
         provider: this.name,
       };
     } catch (err) {
+      if (signal.aborted) onAbort();
       if (err instanceof LlmError) throw err;
       throw wrap(err);
+    } finally {
+      cleanup();
     }
   }
 
@@ -126,6 +147,14 @@ export class OpenAIProvider implements LlmProvider {
 }
 
 function wrap(err: unknown): LlmError {
+  if (err instanceof OpenAI.APIUserAbortError) {
+    return new LlmError("OpenAI request aborted (timeout)", {
+      provider: "openai",
+      kind: "timeout",
+      retryable: false,
+      cause: err,
+    });
+  }
   if (err instanceof OpenAI.APIError) {
     const status = err.status ?? 0;
     const kind =

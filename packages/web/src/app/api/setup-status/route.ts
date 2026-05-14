@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 type ProviderKey = "anthropic" | "openai" | "ollama";
 
 interface SetupStatus {
