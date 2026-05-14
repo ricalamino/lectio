@@ -79,7 +79,7 @@ async function main() {
     }
     for (const job of jobs) {
       const data = enrichJobSchema.parse(job.data);
-      await handleEnrich(data, {
+      const enriched = await handleEnrich(data, {
         db,
         llm,
         embed,
@@ -92,7 +92,9 @@ async function main() {
         enrichLlmTimeoutMs: env.LECTIO_ENRICH_LLM_TIMEOUT_MS,
         enrichStaleMs: env.LECTIO_ENRICH_STALE_MS,
       });
-      await boss.send(JOB_CONNECT, { captureId: data.captureId });
+      if (enriched) {
+        await boss.send(JOB_CONNECT, { captureId: data.captureId });
+      }
     }
   });
 

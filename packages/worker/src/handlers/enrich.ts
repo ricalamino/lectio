@@ -168,12 +168,30 @@ async function markEnrichFailed(
     .where(eq(captures.id, capture.id));
 }
 
-export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<void> {
+/**
+ * Returns true when the capture was actually enriched in this run (LLM was
+ * called and a fresh enrichment row was written). Returns false when the
+ * handler skipped or failed without producing a new enrichment — the caller
+ * uses this to avoid enqueueing a downstream connect job that would burn
+ * tokens for nothing.
+ */
+export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<boolean> {
   const [capture] = await deps.db
     .select()
     .from(captures)
     .where(eq(captures.id, data.captureId));
-  if (!capture) return;
+  if (!capture) return false;
+
+  // Idempotency guard: if the capture is already enriched and an enrichment
+  // row exists, skip. Re-enrich endpoints reset status to 'pending' before
+  // publishing, so an explicit user-triggered re-enrich is not blocked here.
+  if (capture.status === "enriched") {
+    const [existing] = await deps.db
+      .select({ id: enrichments.captureId })
+      .from(enrichments)
+      .where(eq(enrichments.captureId, capture.id));
+    if (existing) return false;
+  }
 
   if (
     capture.status === "enriching" &&
@@ -181,7 +199,7 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
     Date.now() - capture.updatedAt.getTime() > deps.enrichStaleMs
   ) {
     await markEnrichFailed(deps, capture, "enrich_stale");
-    return;
+    return false;
   }
 
   let resolved: { rawContent: string; transcript: string | null };
@@ -200,7 +218,7 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
         },
       })
       .where(eq(captures.id, capture.id));
-    return;
+    return false;
   }
 
   if (!resolved.rawContent) {
@@ -215,7 +233,7 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
         },
       })
       .where(eq(captures.id, capture.id));
-    return;
+    return false;
   }
 
   if (!capture.rawText?.trim() && resolved.rawContent) {
@@ -233,7 +251,7 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
   const attempts = readEnrichLlmAttempts(capture.metadata);
   if (attempts >= deps.enrichLlmMaxAttempts) {
     await markEnrichFailed(deps, capture, "llm_attempts_exceeded");
-    return;
+    return false;
   }
 
   const nextAttempts = attempts + 1;
@@ -322,6 +340,7 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
       .update(captures)
       .set({ status: "enriched", updatedAt: new Date() })
       .where(eq(captures.id, capture.id));
+    return true;
   } catch (err) {
     const isNonRetryable = err instanceof LlmError && !err.opts.retryable;
     const enrichError = isNonRetryable ? "llm_non_retryable" : "llm_failed";
@@ -336,11 +355,11 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<v
     });
     if (isNonRetryable) {
       console.error("[enrich] non-retryable LLM failure", err);
-      return;
+      return false;
     }
     if (nextAttempts >= deps.enrichLlmMaxAttempts) {
       console.error("[enrich] enrichment LLM attempt budget exhausted", err);
-      return;
+      return false;
     }
     throw err;
   }

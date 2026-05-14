@@ -163,11 +163,16 @@ export default function SearchPage() {
         </div>
       ) : null}
       {hits ? (
-        <ul className="divide-y divide-border rounded-md border border-border">
-          {hits.length === 0 ? (
-            <li className="px-4 py-3 text-muted-foreground text-sm">No matches.</li>
-          ) : (
-            hits.map((h) => (
+        hits.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border px-6 py-10 text-center">
+            <p className="text-sm font-medium">No matches.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Try rephrasing — search is natural language, so &ldquo;what did I save about X&rdquo; works.
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {hits.map((h) => (
               <li key={h.id} className="px-4 py-3 text-sm">
                 <span className="text-muted-foreground text-xs">{h.kind}</span>
                 {h.title ? <p className="mt-1 font-medium">{h.title}</p> : null}
@@ -176,9 +181,9 @@ export default function SearchPage() {
                   <p className="mt-1 text-muted-foreground">{h.summary}</p>
                 ) : null}
               </li>
-            ))
-          )}
-        </ul>
+            ))}
+          </ul>
+        )
       ) : null}
     </div>
   );

@@ -143,17 +143,16 @@ export default function CapturePage() {
         </div>
       ) : null}
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-muted-foreground">Text</h2>
+      <section className="space-y-3">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="What's on your mind?"
+          placeholder="A thought, a quote, half a sentence — anything."
           rows={6}
           className="w-full resize-none rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">URL (optional — saves as link)</label>
+          <label className="text-xs text-muted-foreground">Or paste a link</label>
           <input
             type="url"
             value={url}
@@ -162,38 +161,49 @@ export default function CapturePage() {
             className="w-full rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            An LLM will title, summarize, and connect it in the background.
+          </p>
           <Button onClick={() => void submit()} disabled={submitting || (!text.trim() && !url.trim())}>
-            {submitting ? "Saving…" : url.trim() ? "Save link" : "Save text"}
+            {submitting ? "Saving…" : url.trim() ? "Save link" : "Capture"}
           </Button>
         </div>
       </section>
 
-      <section className="space-y-2 border-t border-border pt-4">
-        <h2 className="text-sm font-medium text-muted-foreground">Photo or voice (needs S3 + OpenAI on worker)</h2>
-        <div className="flex flex-wrap gap-2">
-          <select
-            value={mediaKind}
-            onChange={(e) => setMediaKind(e.target.value as "voice" | "image")}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="image">Image (OCR)</option>
-            <option value="voice">Voice (Whisper)</option>
-          </select>
-          <input
-            type="file"
-            accept={mediaKind === "image" ? "image/*" : "audio/*,.m4a,.mp3,.webm,.wav,.ogg"}
-            onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
-            className="max-w-full text-sm"
-          />
+      <details className="group border-t border-border pt-4">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <span className="text-xs transition-transform group-open:rotate-90">▸</span>
+          <span>Photo or voice</span>
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-500">
+            Experimental
+          </span>
+        </summary>
+        <div className="mt-3 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Wired but not validated. Needs S3 + OpenAI configured on the worker.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={mediaKind}
+              onChange={(e) => setMediaKind(e.target.value as "voice" | "image")}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="image">Image (OCR)</option>
+              <option value="voice">Voice (Whisper)</option>
+            </select>
+            <input
+              type="file"
+              accept={mediaKind === "image" ? "image/*" : "audio/*,.m4a,.mp3,.webm,.wav,.ogg"}
+              onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
+              className="max-w-full text-sm"
+            />
+          </div>
+          <Button onClick={() => void submitMedia()} disabled={submitting || !mediaFile}>
+            {submitting ? "Uploading…" : "Save media"}
+          </Button>
         </div>
-        <Button onClick={() => void submitMedia()} disabled={submitting || !mediaFile}>
-          {submitting ? "Uploading…" : "Save media"}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Optional note: you can add text above as context; it is stored with the capture.
-        </p>
-      </section>
+      </details>
 
       {error ? <span className="text-sm text-muted-foreground">{error}</span> : null}
     </div>

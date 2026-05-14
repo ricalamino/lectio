@@ -42,6 +42,31 @@ function parseFilter(raw: string | undefined): FilterKind {
   return "all";
 }
 
+function StatusPill({ status, kind }: { status: string; kind: string }) {
+  if (status === "failed") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive">
+        <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+        Failed
+      </span>
+    );
+  }
+  if (status === "pending" || status === "enriching") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-500">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+        {status === "enriching" ? "Enriching" : "Queued"}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/70" />
+      {kind}
+    </span>
+  );
+}
+
 function filterClause(filter: FilterKind): SQL | undefined {
   if (filter === "processing") {
     return or(eq(captures.status, "pending"), eq(captures.status, "enriching"));
@@ -118,13 +143,34 @@ export default async function InboxPage({
       ) : null}
 
       {visible.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {filter === "failed"
-            ? "No failed captures."
-            : filter === "processing"
-              ? "No captures being processed."
-              : "Nothing yet. Start capturing."}
-        </p>
+        <div className="rounded-md border border-dashed border-border px-6 py-12 text-center">
+          {filter === "failed" ? (
+            <>
+              <p className="text-sm font-medium">Nothing failed.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                All captures enriched successfully.
+              </p>
+            </>
+          ) : filter === "processing" ? (
+            <>
+              <p className="text-sm font-medium">All caught up.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                No captures are being processed right now.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium">Your inbox is empty.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Paste a link, jot a thought, or share from any app —{" "}
+                <Link href="/capture" className="underline underline-offset-4 hover:text-foreground">
+                  start capturing
+                </Link>
+                .
+              </p>
+            </>
+          )}
+        </div>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {visible.map((c) => (
@@ -134,17 +180,7 @@ export default async function InboxPage({
                   <span className="font-medium leading-snug">
                     {c.title ?? c.rawText?.slice(0, 80) ?? "Untitled capture"}
                   </span>
-                  <span
-                    className={`shrink-0 text-xs ${
-                      c.status === "failed"
-                        ? "text-destructive"
-                        : c.status === "pending" || c.status === "enriching"
-                          ? "text-muted-foreground/60"
-                          : "text-muted-foreground"
-                    }`}
-                  >
-                    {c.status === "enriched" ? c.kind : c.status}
-                  </span>
+                  <StatusPill status={c.status} kind={c.kind} />
                 </div>
                 {c.summary ? (
                   <p className="mt-1 line-clamp-2 text-muted-foreground">{c.summary}</p>
@@ -152,12 +188,13 @@ export default async function InboxPage({
                   <p className="mt-1 line-clamp-2 text-muted-foreground">{c.rawText}</p>
                 ) : null}
                 {Array.isArray(c.tags) && c.tags.length > 0 ? (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {(c.tags as string[]).slice(0, 4).map((tag) => (
                       <span
                         key={tag}
-                        className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                        className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
                       >
+                        <span className="text-muted-foreground/50">#</span>
                         {tag}
                       </span>
                     ))}
