@@ -4,14 +4,8 @@ import { createDatabase, type Database } from "@lectio/core/db";
 import { enrichments } from "@lectio/core/db/schema";
 import { createProvider, type LlmProviderName } from "@lectio/core/llm";
 import { loadEnv } from "./env.js";
-import {
-  JOB_CONNECT,
-  JOB_ENRICH,
-  connectJobSchema,
-  enrichJobSchema,
-} from "./jobs.js";
+import { JOB_ENRICH, enrichJobSchema } from "./jobs.js";
 import { handleEnrich } from "./handlers/enrich.js";
-import { handleConnect } from "./handlers/connect.js";
 
 async function countEnrichedToday(db: Database): Promise<number> {
   // Count enrichment rows created today (UTC), not capture updates. Updates
@@ -24,6 +18,13 @@ async function countEnrichedToday(db: Database): Promise<number> {
     .from(enrichments)
     .where(gte(enrichments.createdAt, startOfDay));
   return row?.count ?? 0;
+}
+
+function nextUtcDayStart(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d;
 }
 
 async function main() {
@@ -41,7 +42,6 @@ async function main() {
   // pg-boss 10 requires queues to exist before send/work. createQueue is
   // idempotent — safe to call on every boot.
   await boss.createQueue(JOB_ENRICH);
-  await boss.createQueue(JOB_CONNECT);
 
   const transcribeBackend =
     env.LECTIO_TRANSCRIBE_BACKEND ?? (env.OPENAI_API_KEY ? "openai" : undefined);
@@ -70,16 +70,26 @@ async function main() {
     if (env.LECTIO_MAX_ENRICH_PER_DAY !== undefined) {
       const done = await countEnrichedToday(db);
       if (done >= env.LECTIO_MAX_ENRICH_PER_DAY) {
+        // Returning here lets pg-boss mark the batch as completed, so the
+        // capped jobs would vanish instead of running tomorrow. Re-enqueue
+        // each capture with startAfter at the next UTC day boundary before
+        // returning — the original job completes (cheap no-op) and a fresh
+        // job carries the work into the next window.
+        const startAfter = nextUtcDayStart();
+        for (const job of jobs) {
+          const data = enrichJobSchema.parse(job.data);
+          await boss.send(JOB_ENRICH, data, { startAfter });
+        }
         console.warn(
           `[worker] daily enrichment cap reached (${done}/${env.LECTIO_MAX_ENRICH_PER_DAY}). ` +
-            `Jobs will retry tomorrow.`,
+            `Re-enqueued ${jobs.length} job(s) for ${startAfter.toISOString()}.`,
         );
         return;
       }
     }
     for (const job of jobs) {
       const data = enrichJobSchema.parse(job.data);
-      const enriched = await handleEnrich(data, {
+      await handleEnrich(data, {
         db,
         llm,
         embed,
@@ -92,16 +102,6 @@ async function main() {
         enrichLlmTimeoutMs: env.LECTIO_ENRICH_LLM_TIMEOUT_MS,
         enrichStaleMs: env.LECTIO_ENRICH_STALE_MS,
       });
-      if (enriched) {
-        await boss.send(JOB_CONNECT, { captureId: data.captureId });
-      }
-    }
-  });
-
-  await boss.work(JOB_CONNECT, { batchSize: 1 }, async (jobs) => {
-    for (const job of jobs) {
-      const data = connectJobSchema.parse(job.data);
-      await handleConnect(data, { db, llm, model: env.LECTIO_ENRICH_MODEL });
     }
   });
 

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { captures, connections, enrichments } from "@lectio/core/db/schema";
+import { captures, enrichments } from "@lectio/core/db/schema";
 import { RetryEnrichButton } from "@/components/retry-enrich-button";
 import { DeleteCaptureButton, EditRawText } from "@/components/capture-actions";
 
@@ -22,34 +22,6 @@ export default async function CaptureDetailPage({ params }: Props) {
     .from(enrichments)
     .where(eq(enrichments.captureId, id))
     .limit(1);
-
-  const outgoing = await db()
-    .select({
-      id: connections.id,
-      kind: connections.kind,
-      reason: connections.reason,
-      otherId: connections.toCaptureId,
-      otherTitle: enrichments.title,
-    })
-    .from(connections)
-    .innerJoin(enrichments, eq(enrichments.captureId, connections.toCaptureId))
-    .where(eq(connections.fromCaptureId, id))
-    .orderBy(desc(connections.createdAt))
-    .limit(20);
-
-  const incoming = await db()
-    .select({
-      id: connections.id,
-      kind: connections.kind,
-      reason: connections.reason,
-      otherId: connections.fromCaptureId,
-      otherTitle: enrichments.title,
-    })
-    .from(connections)
-    .innerJoin(enrichments, eq(enrichments.captureId, connections.fromCaptureId))
-    .where(eq(connections.toCaptureId, id))
-    .orderBy(desc(connections.createdAt))
-    .limit(20);
 
   return (
     <div className="space-y-6">
@@ -150,37 +122,6 @@ export default async function CaptureDetailPage({ params }: Props) {
         </section>
       ) : null}
 
-      {outgoing.length > 0 || incoming.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Connections</h2>
-          <ul className="space-y-2 text-sm">
-            {outgoing.map((row) => (
-              <li key={`o-${row.id}`} className="rounded-md border border-border px-3 py-2">
-                <span className="text-xs uppercase text-muted-foreground">{row.kind}</span>
-                <p className="mt-1">
-                  →{" "}
-                  <Link href={`/inbox/${row.otherId}`} className="font-medium hover:underline">
-                    {row.otherTitle}
-                  </Link>
-                </p>
-                <p className="mt-1 text-muted-foreground">{row.reason}</p>
-              </li>
-            ))}
-            {incoming.map((row) => (
-              <li key={`i-${row.id}`} className="rounded-md border border-border px-3 py-2">
-                <span className="text-xs uppercase text-muted-foreground">{row.kind}</span>
-                <p className="mt-1">
-                  ←{" "}
-                  <Link href={`/inbox/${row.otherId}`} className="font-medium hover:underline">
-                    {row.otherTitle}
-                  </Link>
-                </p>
-                <p className="mt-1 text-muted-foreground">{row.reason}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </div>
   );
 }

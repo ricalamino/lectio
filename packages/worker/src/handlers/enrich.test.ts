@@ -199,7 +199,7 @@ describe("handleEnrich", () => {
     });
     const deps = makeDeps({ db: db as unknown as EnrichDeps["db"], llm });
 
-    await expect(handleEnrich({ captureId: "cap-1" }, deps)).resolves.toBeUndefined();
+    await expect(handleEnrich({ captureId: "cap-1" }, deps)).resolves.toBe(false);
 
     const failUpdate = updates.find((u) => u.status === "failed");
     expect(failUpdate).toBeDefined();
@@ -258,5 +258,42 @@ describe("handleEnrich", () => {
     expect(llm.completeJson).not.toHaveBeenCalled();
     const failUpdate = updates.find((u) => u.status === "failed");
     expect((failUpdate?.metadata as Record<string, unknown>)?.enrichError).toBe("enrich_stale");
+  });
+
+  it("skips re-enrichment when capture is already enriched and an enrichment row exists", async () => {
+    // Two-phase select stub: first select returns the capture, second select
+    // (the idempotency probe against the enrichments table) returns a row.
+    const capture = makeCapture({ rawText: "hello", status: "enriched" });
+    const updates: Array<Record<string, unknown>> = [];
+    let selectCalls = 0;
+    const db = {
+      select: () => {
+        selectCalls += 1;
+        const isCaptureLookup = selectCalls === 1;
+        return {
+          from: () => ({
+            where: () => (isCaptureLookup ? [capture] : [{ id: capture.id }]),
+          }),
+        };
+      },
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+          },
+        }),
+      }),
+      insert: () => ({
+        values: () => ({ onConflictDoUpdate: () => {} }),
+      }),
+    };
+    const llm = makeLlm();
+    const deps = makeDeps({ db: db as unknown as EnrichDeps["db"], llm });
+
+    const result = await handleEnrich({ captureId: "cap-1" }, deps);
+
+    expect(result).toBe(false);
+    expect(llm.completeJson).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
   });
 });

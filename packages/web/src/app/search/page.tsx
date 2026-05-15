@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchAnswerText } from "@/components/search-answer";
@@ -15,6 +15,11 @@ interface Hit {
   mediaKey: string | null;
 }
 
+interface TagOption {
+  tag: string;
+  count: number;
+}
+
 type SaveState = "idle" | "saving" | "saved";
 
 export default function SearchPage() {
@@ -24,6 +29,30 @@ export default function SearchPage() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [tagOptions, setTagOptions] = useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let aborted = false;
+    fetch("/api/tags")
+      .then((res) => (res.ok ? res.json() : { tags: [] }))
+      .then((data: { tags: TagOption[] }) => {
+        if (!aborted) setTagOptions(data.tags ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      aborted = true;
+    };
+  }, []);
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  }
 
   async function saveAsCapture() {
     if (!answer || !q.trim()) return;
@@ -43,14 +72,17 @@ export default function SearchPage() {
   }
 
   async function run() {
-    if (!q.trim()) return;
+    if (!q.trim() && selectedTags.size === 0) return;
     setLoading(true);
     setAnswer(null);
     setHits(null);
     setCited(null);
     setSaveState("idle");
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      for (const tag of selectedTags) params.append("tag", tag);
+      const res = await fetch(`/api/search?${params.toString()}`);
       const ct = res.headers.get("content-type") ?? "";
       if (!ct.includes("text/event-stream")) {
         // Fallback for empty-result non-streaming responses
@@ -110,6 +142,29 @@ export default function SearchPage() {
           {loading ? "…" : "Search"}
         </Button>
       </div>
+      {tagOptions.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {tagOptions.map(({ tag, count }) => {
+            const active = selectedTags.has(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => toggleTag(tag)}
+                className={
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                  (active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground")
+                }
+              >
+                <span>{tag}</span>
+                <span className={active ? "opacity-80" : "opacity-60"}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {answer ? (
         <div className="rounded-md border border-border px-4 py-3 text-sm leading-6">
           <div className="mb-2 flex items-start justify-between gap-3">

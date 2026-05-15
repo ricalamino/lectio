@@ -15,19 +15,3 @@ export {
   extractCitationIds,
   type SearchCandidate,
 } from "./search.js";
-
-export {
-  CONNECTION_SYSTEM_PROMPT,
-  buildConnectionUserMessage,
-  buildConnectionBatchUserMessage,
-  connectionOutputSchema,
-  connectionBatchOutputSchema,
-  connectionVerdictEnum,
-  connectionTypeEnum,
-  connectionConfidenceEnum,
-  normalizeConnectionType,
-  type ConnectionOutput,
-  type ConnectionBatchOutput,
-  type ConnectionType,
-  type ConnectionCaptureRef,
-} from "./connections.js";

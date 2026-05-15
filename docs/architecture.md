@@ -19,7 +19,7 @@ Lectio is a small monorepo optimized for self-hosting with Docker Compose.
 ┌────────────────────────────────────────────────────────────┐
 │                  packages/web  (Next.js)                   │
 │                                                            │
-│  API routes: /api/captures  /api/search  /api/connections  │
+│  API routes: /api/captures  /api/search  /api/tags         │
 │              /api/import    /api/export  /api/setup-status │
 │                                                            │
 │  Auth: next-auth JWT (single admin user)                   │
@@ -33,11 +33,8 @@ Lectio is a small monorepo optimized for self-hosting with Docker Compose.
 │                  │  │  handleEnrich:                      │
 │  captures        │  │    resolve media → LLM → embed     │
 │  enrichments     │  │    → write enrichment row          │
-│  connections     │  │                                    │
-│  pg-boss queues  │  │  handleConnect:                    │
-└────────┬─────────┘  │    vector + lexical candidates     │
-         │            │    → batch LLM → write connections │
-         │            └──────────────┬─────────────────────┘
+│  pg-boss queues  │  │    (title, summary, tags, vector)  │
+└────────┬─────────┘  └──────────────┬─────────────────────┘
          │                           │ createProvider
          │                           ▼
          │            ┌──────────────────────────────────┐
@@ -69,16 +66,15 @@ Lectio is a small monorepo optimized for self-hosting with Docker Compose.
 |--------|------|
 | `packages/core` | Drizzle schema and migrations, LLM provider abstraction (`createProvider`), shared prompts (`packages/core/src/prompts`). No UI or Next.js imports. |
 | `packages/web` | Next.js 14 App Router: UI, authenticated API routes, next-auth (credentials), PWA manifest + service worker, MinIO uploads via `@aws-sdk/client-s3`. |
-| `packages/worker` | Long-running Node process using `pg-boss` on the same Postgres as the app. Handles `enrich_capture` and `generate_connections` jobs. |
+| `packages/worker` | Long-running Node process using `pg-boss` on the same Postgres as the app. Handles `enrich_capture` jobs. |
 | `packages/mcp-server` | MCP stdio server exposing tools over captured data for desktop clients. |
 
 ## Data flow
 
 1. **Capture** — User creates a row in `captures` (web UI, share target, or API). Status defaults to `pending`.
 2. **Queue** — Web publishes `enrich_capture` to `pg-boss` (see `packages/web/src/lib/queue.ts`).
-3. **Enrich** — Worker loads the capture, calls the configured LLM with `ENRICHMENT_SYSTEM_PROMPT`, validates JSON with Zod, optionally embeds text (OpenAI or Ollama), writes `enrichments`, sets capture status to `enriched` or `failed`.
-4. **Connect** — Worker runs `generate_connections` for the same capture id, proposes edges into `connections`, respecting existing links and `rejected_connection_edges`.
-5. **Search** — Web route merges lexical SQL with optional pgvector retrieval when query embeddings are available, then asks the search LLM for an answer with citations.
+3. **Enrich** — Worker loads the capture, calls the configured LLM with `ENRICHMENT_SYSTEM_PROMPT`, validates JSON with Zod, optionally embeds text (OpenAI or Ollama), writes `enrichments` (including `tags`), sets capture status to `enriched` or `failed`.
+4. **Search** — Web route merges lexical SQL with optional pgvector retrieval when query embeddings are available, then asks the search LLM for an answer with citations. The `?tag=` query param filters candidates by `enrichments.tags @> '["<tag>"]'::jsonb` (AND across multiple tag params); a tag-only query skips the LLM and just lists the matching captures.
 
 ## Runtime layout (Docker)
 

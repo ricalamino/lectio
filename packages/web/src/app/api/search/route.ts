@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { captures, enrichments } from "@lectio/core/db/schema";
@@ -87,10 +87,26 @@ function toCandidate(row: SearchHitRow): SearchCandidate {
   };
 }
 
-async function loadLexicalCandidates(q: string): Promise<SearchHitRow[]> {
+/**
+ * Builds AND-joined `tags @> '["tag"]'::jsonb` predicates. Empty array
+ * returns null — callers must skip applying it. Using jsonb containment
+ * (vs ilike on serialized text) avoids false matches across tag
+ * boundaries ("ai" matching "trail") and uses the GIN index when present.
+ */
+function tagsContainAll(tags: string[]): SQL | null {
+  if (tags.length === 0) return null;
+  const predicates = tags.map(
+    (tag) => sql`${enrichments.tags} @> ${JSON.stringify([tag])}::jsonb`,
+  );
+  return and(...predicates) ?? null;
+}
+
+async function loadLexicalCandidates(q: string, tags: string[]): Promise<SearchHitRow[]> {
   const terms = searchTerms(q);
   const patterns = [`%${q}%`, ...terms.map((term) => `%${term}%`)];
-  const conditions = patterns.flatMap(fieldMatches);
+  const textPredicate = or(...patterns.flatMap(fieldMatches));
+  const tagPredicate = tagsContainAll(tags);
+  const where = tagPredicate ? and(textPredicate, tagPredicate) : textPredicate;
 
   return db()
     .select({
@@ -106,7 +122,7 @@ async function loadLexicalCandidates(q: string): Promise<SearchHitRow[]> {
     })
     .from(captures)
     .leftJoin(enrichments, eq(enrichments.captureId, captures.id))
-    .where(or(...conditions))
+    .where(where)
     .orderBy(desc(captures.capturedAt))
     .limit(24);
 }
@@ -114,8 +130,13 @@ async function loadLexicalCandidates(q: string): Promise<SearchHitRow[]> {
 async function loadVectorCandidates(
   queryEmbedding: number[],
   limit: number,
+  tags: string[],
 ): Promise<SearchHitRow[]> {
   const vector = `[${queryEmbedding.join(",")}]`;
+  const tagPredicate = tagsContainAll(tags);
+  const where = tagPredicate
+    ? and(isNotNull(enrichments.embedding), tagPredicate)
+    : isNotNull(enrichments.embedding);
 
   return db()
     .select({
@@ -131,7 +152,7 @@ async function loadVectorCandidates(
     })
     .from(captures)
     .innerJoin(enrichments, eq(enrichments.captureId, captures.id))
-    .where(isNotNull(enrichments.embedding))
+    .where(where)
     .orderBy(sql`${enrichments.embedding} <=> ${vector}::vector`)
     .limit(limit);
 }
@@ -157,26 +178,64 @@ async function embedQuery(q: string, config: ReturnType<typeof env>): Promise<nu
   return null;
 }
 
+async function loadLexicalByTagsOnly(tags: string[]): Promise<SearchHitRow[]> {
+  const tagPredicate = tagsContainAll(tags);
+  if (!tagPredicate) return [];
+  return db()
+    .select({
+      id: captures.id,
+      rawText: captures.rawText,
+      kind: captures.kind,
+      capturedAt: captures.capturedAt,
+      mediaKey: captures.mediaKey,
+      title: enrichments.title,
+      summary: enrichments.summary,
+      tags: enrichments.tags,
+      suggestedAction: enrichments.suggestedAction,
+    })
+    .from(captures)
+    .innerJoin(enrichments, eq(enrichments.captureId, captures.id))
+    .where(tagPredicate)
+    .orderBy(desc(captures.capturedAt))
+    .limit(50);
+}
+
 function sseEvent(data: unknown): string {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const q = url.searchParams.get("q")?.trim();
-  if (!q) {
+  const q = url.searchParams.get("q")?.trim() ?? "";
+  // Normalize: dedupe, drop empties. Multiple tag params combine with AND
+  // (capture must carry every selected tag). Driven by chip toggles in the
+  // search UI.
+  const tags = Array.from(
+    new Set(url.searchParams.getAll("tag").map((t) => t.trim()).filter(Boolean)),
+  );
+
+  if (!q && tags.length === 0) {
     return NextResponse.json({ answer: null, hits: [], cited: [] });
   }
 
   const config = env();
+
+  // Tag-only filter: skip the LLM entirely. The user is browsing, not
+  // asking a question, so we just list the matching captures. Saves all
+  // the search prompt tokens.
+  if (!q) {
+    const rows = await loadLexicalByTagsOnly(tags);
+    return NextResponse.json({ answer: null, hits: rows, cited: [] });
+  }
+
   const [queryEmbedding, lexicalRows] = await Promise.all([
     embedQuery(q, config),
-    loadLexicalCandidates(q),
+    loadLexicalCandidates(q, tags),
   ]);
 
   const vectorRows =
     queryEmbedding && queryEmbedding.length > 0
-      ? await loadVectorCandidates(queryEmbedding, 24)
+      ? await loadVectorCandidates(queryEmbedding, 24, tags)
       : [];
 
   const rows = mergeVectorAndLexicalHits(vectorRows, lexicalRows, 20);

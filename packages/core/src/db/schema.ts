@@ -7,10 +7,8 @@ import {
   jsonb,
   timestamp,
   integer,
-  real,
   index,
   uniqueIndex,
-  primaryKey,
   customType,
 } from "drizzle-orm/pg-core";
 
@@ -40,21 +38,6 @@ export const captureStatus = pgEnum("capture_status", [
   "enriching",
   "enriched",
   "failed",
-]);
-
-// Aligned with the connections prompt's `type` field.
-export const connectionKind = pgEnum("connection_kind", [
-  "continuation",
-  "contradiction",
-  "pattern",
-  "entity_update",
-  "question_answer",
-]);
-
-export const connectionConfidence = pgEnum("connection_confidence", [
-  "high",
-  "medium",
-  "low",
 ]);
 
 export const feedbackKind = pgEnum("feedback_kind", [
@@ -147,51 +130,6 @@ export const enrichments = pgTable(
   }),
 );
 
-export const connections = pgTable(
-  "connections",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    fromCaptureId: uuid("from_capture_id")
-      .notNull()
-      .references(() => captures.id, { onDelete: "cascade" }),
-    toCaptureId: uuid("to_capture_id")
-      .notNull()
-      .references(() => captures.id, { onDelete: "cascade" }),
-    kind: connectionKind("kind").notNull(),
-    reason: text("reason").notNull(),
-    confidence: connectionConfidence("confidence").notNull(),
-    score: real("score"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    fromIdx: index("connections_from_idx").on(t.fromCaptureId),
-    toIdx: index("connections_to_idx").on(t.toCaptureId),
-    pairUnique: uniqueIndex("connections_pair_kind_unique").on(
-      t.fromCaptureId,
-      t.toCaptureId,
-      t.kind,
-    ),
-  }),
-);
-
-/** Pairs the user rejected so the connect job will not propose them again. */
-export const rejectedConnectionEdges = pgTable(
-  "rejected_connection_edges",
-  {
-    fromCaptureId: uuid("from_capture_id")
-      .notNull()
-      .references(() => captures.id, { onDelete: "cascade" }),
-    toCaptureId: uuid("to_capture_id")
-      .notNull()
-      .references(() => captures.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.fromCaptureId, t.toCaptureId] }),
-    rejectedFromIdx: index("rejected_edges_from_idx").on(t.fromCaptureId),
-  }),
-);
-
 export const feedback = pgTable(
   "feedback",
   {
@@ -199,9 +137,6 @@ export const feedback = pgTable(
     captureId: uuid("capture_id")
       .notNull()
       .references(() => captures.id, { onDelete: "cascade" }),
-    connectionId: uuid("connection_id").references(() => connections.id, {
-      onDelete: "set null",
-    }),
     kind: feedbackKind("kind").notNull(),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -215,10 +150,6 @@ export type Capture = typeof captures.$inferSelect;
 export type NewCapture = typeof captures.$inferInsert;
 export type Enrichment = typeof enrichments.$inferSelect;
 export type NewEnrichment = typeof enrichments.$inferInsert;
-export type Connection = typeof connections.$inferSelect;
-export type NewConnection = typeof connections.$inferInsert;
-export type RejectedConnectionEdge = typeof rejectedConnectionEdges.$inferSelect;
-export type NewRejectedConnectionEdge = typeof rejectedConnectionEdges.$inferInsert;
 export type Feedback = typeof feedback.$inferSelect;
 export type NewFeedback = typeof feedback.$inferInsert;
 

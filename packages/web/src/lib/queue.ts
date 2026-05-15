@@ -2,12 +2,8 @@ import PgBoss from "pg-boss";
 import { env } from "./env";
 
 export const JOB_ENRICH = "enrich_capture";
-export const JOB_CONNECT = "generate_connections";
 
 export interface EnrichJobData {
-  captureId: string;
-}
-export interface ConnectJobData {
   captureId: string;
 }
 
@@ -21,7 +17,6 @@ function start(): Promise<PgBoss> {
     // idempotent. Doing it here means a worker-less deploy still queues
     // jobs that a worker can pick up later.
     await boss.createQueue(JOB_ENRICH);
-    await boss.createQueue(JOB_CONNECT);
     return boss;
   });
   return cached;
@@ -30,9 +25,4 @@ function start(): Promise<PgBoss> {
 export async function publishEnrich(data: EnrichJobData): Promise<string | null> {
   const boss = await start();
   return boss.send(JOB_ENRICH, data, { retryLimit: 2, retryBackoff: true });
-}
-
-export async function publishConnect(data: ConnectJobData): Promise<string | null> {
-  const boss = await start();
-  return boss.send(JOB_CONNECT, data, { retryLimit: 5, retryBackoff: true });
 }

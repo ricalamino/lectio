@@ -13,7 +13,7 @@ missing. Keep it updated as implementation moves.
   - `packages/core/src/db/migrations/`
   - `packages/core/src/llm/`
   - `packages/core/src/prompts/`
-- Web package with Next.js App Router, auth, base layout/sidebar, capture/inbox/inbox detail/search/connections/export pages, and API routes:
+- Web package with Next.js App Router, auth, base layout/sidebar, capture/inbox/inbox detail/search/export pages, and API routes:
   - `packages/web/src/app/`
   - `packages/web/src/auth.ts`
   - `packages/web/src/middleware.ts`
@@ -32,11 +32,11 @@ missing. Keep it updated as implementation moves.
   - `LICENSE`
   - `.github/workflows/ci.yml`
   - `.github/workflows/release.yml`
-- Connections review UI, feedback API, and persistence so dismissed pairs are not re-suggested:
-  - `packages/web/src/app/connections/page.tsx`
-  - `packages/web/src/app/api/connections/[id]/feedback/route.ts`
-  - `packages/core/src/db/migrations/0001_rejected_edges.sql` (`rejected_connection_edges` + `feedback.connection_id` ON DELETE SET NULL)
-  - Worker excludes rejected edges in `packages/worker/src/handlers/connect.ts`
+- Tag-filtered search (chips in `/search`, AND-combined, jsonb containment):
+  - `packages/web/src/app/api/search/route.ts` (handles `?tag=` repeated params, tag-only branch skips LLM)
+  - `packages/web/src/app/api/tags/route.ts` (distinct tags + counts, top 50)
+  - `packages/web/src/app/search/page.tsx` (toggleable chips below the search input)
+  - `packages/core/src/db/migrations/0003_drop_connections.sql` (removes the prior connections feature in favor of tag-driven discovery)
 - Plain Markdown export (latest 500 captures): `packages/web/src/app/export/page.tsx`, `packages/web/src/app/api/export/markdown/route.ts`
 - Search answer inline citation highlight: `packages/web/src/components/search-answer.tsx`
 - Ollama provider (chat, JSON, embeddings): `packages/core/src/llm/ollama.ts`, wired in `packages/core/src/llm/factory.ts`
@@ -64,10 +64,6 @@ missing. Keep it updated as implementation moves.
   - Main code: `packages/core/src/integrations/transcribe.ts`, `packages/core/src/integrations/openaiMedia.ts`, `packages/core/src/integrations/pdf.ts`, `packages/core/src/integrations/video.ts`, worker enrich + S3 read.
   - Current state: transcription via OpenAI Whisper *or* any OpenAI-compatible local server; image OCR via OpenAI vision; PDF text via `pdf-parse`; video → ffmpeg extracts audio → Whisper.
   - Remaining: non-OpenAI vision (OCR), scanned-PDF OCR fallback, frame-level video captioning, cost controls.
-- Connection suggestions:
-  - Main code: `packages/worker/src/handlers/connect.ts`
-  - Current state: candidate retrieval, LLM validation, pgvector/lexical, excludes existing connections and user-rejected `(from, to)` edges.
-  - Remaining: automated tests for duplicate prevention / fallback ranking; optional boosting from repeated "useful" feedback.
 - Search:
   - Main code: `packages/web/src/app/api/search/route.ts`, `packages/web/src/lib/search-retrieval.ts`, `packages/web/src/components/search-answer.tsx`
   - Current state: hybrid retrieval, `cited` payload, citation cards, `#xxxxxxxx` highlights in the answer text; query embeddings via OpenAI or Ollama when `LECTIO_EMBED_*` is set.

@@ -88,10 +88,9 @@ LECTIO_EMBED_MODEL=nomic-embed-text
 1. **Capture** — type, paste, or share from any app. Stored raw.
 2. **Enrich** — LLM extracts title, summary, tags, entities,
    suggested actions, and a vector embedding. Runs in the background.
-3. **Connect** — Lectio finds related captures and links them
-   (continuation, contradiction, pattern, same entity in new context).
-4. **Recall** — natural-language search across everything you ever
-   captured, with cited sources.
+3. **Recall** — natural-language search across everything you ever
+   captured, with cited sources. Filter by the tags that enrichment
+   already produced.
 
 ## LLM providers
 
@@ -112,7 +111,7 @@ Configure via `.env` — see `.env.example` for all variables and
 - [x] Text capture
 - [x] Enrichment pipeline (title, summary, tags, entities, actions)
 - [x] Semantic + lexical hybrid search with streaming answers
-- [x] Connection suggestions + review UI
+- [x] Tag-filtered search (chips in /search; AND across tags)
 - [x] PWA with share target + offline capture queue
 - [x] MCP server
 - [x] Export (JSON + Markdown ZIP)
@@ -171,7 +170,7 @@ Items needed before a public Reddit post. Tackled in order.
 - [x] **Architecture diagram** — ASCII diagram added to
       [docs/architecture.md](docs/architecture.md).
 - [ ] **Weekly digest** — email/push summary of what you captured
-      and what connections were found.
+      and which tags were most active.
 
 ### Positioning
 
