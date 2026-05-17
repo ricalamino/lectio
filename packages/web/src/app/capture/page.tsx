@@ -90,6 +90,8 @@ export default function CapturePage() {
       if (!res.ok) throw new Error(await res.text());
       setText("");
       setUrl("");
+      // Invalidate the Router Cache so /inbox re-fetches and shows the new capture.
+      router.refresh();
       router.push("/inbox");
     } catch (err) {
       if (isLikelyOfflineError(err)) {
@@ -119,6 +121,7 @@ export default function CapturePage() {
       if (!res.ok) throw new Error(await res.text());
       setMediaFile(null);
       setText("");
+      router.refresh();
       router.push("/inbox");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -152,7 +155,9 @@ export default function CapturePage() {
           className="w-full resize-none rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Or paste a link</label>
+          <label className="text-xs text-muted-foreground">
+            Or paste a link <span className="text-muted-foreground/70">(add a note above for context — Lectio enriches what you write, not the page)</span>
+          </label>
           <input
             type="url"
             value={url}

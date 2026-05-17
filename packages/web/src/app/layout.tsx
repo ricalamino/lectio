@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   applicationName: "Lectio",
   appleWebApp: { capable: true, title: "Lectio", statusBarStyle: "black-translucent" },
+  other: { "mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {

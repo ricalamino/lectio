@@ -9,6 +9,10 @@ connects, and makes it all searchable in natural language.
 No folders. No tags to maintain. No structure to design. Just
 capture. Lectio figures out the rest.
 
+<p align="center">
+  <img src="docs/screenshots/inbox.png" alt="Lectio inbox — captures with LLM-extracted titles, summaries, and tags" width="820" />
+</p>
+
 > **Alpha software.** Works well for personal use, rough edges
 > remain. See the [ship checklist](#ship-checklist) for known gaps.
 
@@ -92,6 +96,35 @@ LECTIO_EMBED_MODEL=nomic-embed-text
    captured, with cited sources. Filter by the tags that enrichment
    already produced.
 
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="End-to-end demo: paste a thought, watch it get titled, tagged, and surfaced via natural-language search" width="820" />
+</p>
+
+> **On links:** today Lectio enriches the *text you paste*, not the
+> page behind the URL. So a link works best when you drop a sentence
+> of context alongside it ("Why I'm saving this:"). Automatic URL
+> fetch + readability extraction is on the roadmap.
+
+## A look around
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/capture.png" alt="Capture page" /><br />
+      <sub><b>Capture</b> — text or links, processed in the background.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/search.png" alt="Search page" /><br />
+      <sub><b>Search</b> — natural-language answers with cited sources.</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/mobile.png" alt="Lectio on mobile — installable PWA with offline capture queue" width="320" /><br />
+  <sub><b>Mobile PWA</b> — installable on the home screen, captures sync when you reconnect.</sub>
+</p>
+
 ## LLM providers
 
 | Provider | Chat/JSON | Streaming | Embeddings | Status |
@@ -116,6 +149,7 @@ Configure via `.env` — see `.env.example` for all variables and
 - [x] MCP server
 - [x] Export (JSON + Markdown ZIP)
 - [x] Delete / edit captures + retry enrichment
+- [ ] Automatic URL fetch + readability extraction for link captures
 - [ ] Weekly digest
 - [ ] Multi-user
 - [ ] Plugin system
@@ -136,8 +170,8 @@ Items needed before a public Reddit post. Tackled in order.
 
 ### Critical
 
-- [ ] **Screenshots / demo GIF** — need 2–3 real screenshots of inbox,
-      capture, and search result.
+- [x] **Screenshots / demo GIF** — inbox, capture, search, mobile, and
+      end-to-end demo GIF in [docs/screenshots/](docs/screenshots/).
 - [x] **Embedding dimension flexibility** — `LECTIO_EMBED_DIMENSIONS` env
       var + clear mismatch error. See `.env.example` for Ollama config.
 - [x] **First-run onboarding** — setup banner shows on first login when

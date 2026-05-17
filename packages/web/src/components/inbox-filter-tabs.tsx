@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type { CaptureStatusCounts } from "@/lib/capture-status-counts";
 
 export type InboxFilterKind = "all" | "processing" | "failed";
@@ -14,10 +15,13 @@ interface InboxFilterTabsProps {
 }
 
 export function InboxFilterTabs({ activeFilter, initialCounts }: InboxFilterTabsProps) {
+  const router = useRouter();
   const [counts, setCounts] = useState(initialCounts);
+  const lastCountsRef = useRef(initialCounts);
 
   useEffect(() => {
     setCounts(initialCounts);
+    lastCountsRef.current = initialCounts;
   }, [initialCounts]);
 
   useEffect(() => {
@@ -28,7 +32,17 @@ export function InboxFilterTabs({ activeFilter, initialCounts }: InboxFilterTabs
         const res = await fetch("/api/captures/processing");
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as CaptureStatusCounts;
-        if (!cancelled) setCounts(data);
+        if (cancelled) return;
+        setCounts(data);
+        const last = lastCountsRef.current;
+        const changed =
+          data.total !== last.total ||
+          data.processing !== last.processing ||
+          data.failed !== last.failed;
+        lastCountsRef.current = data;
+        // When counts change, the visible list is stale relative to the badges.
+        // Invalidate the Router Cache so the server component re-renders.
+        if (changed) router.refresh();
       } catch {
         // ignore network errors
       }
@@ -40,7 +54,7 @@ export function InboxFilterTabs({ activeFilter, initialCounts }: InboxFilterTabs
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [router]);
 
   const tabs: { label: string; filter: InboxFilterKind; count: number }[] = [
     { label: "All", filter: "all", count: counts.total },
