@@ -29,6 +29,13 @@
       "when": 1779200000000,
       "tag": "0003_drop_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779300000000,
+      "tag": "0004_inbox_tabs",
+      "breakpoints": true
     }
   ]
 }

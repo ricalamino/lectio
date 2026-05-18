@@ -6,42 +6,93 @@
 
 **Body:**
 
-The premise: the bottleneck in a "second brain" isn't retrieval — it's the
-friction of writing things down and organizing them. Most PKM tools assume
-you'll do the organization work. I wanted one where I could paste raw
-thoughts/links and have the LLM figure out the structure.
+**Project Name:** Lectio
 
-So I built **Lectio**. MIT-licensed, fully self-hosted, bring-your-own-model.
+**Repo/Website Link:** https://github.com/ricalamino/lectio
 
-**How it works:**
+**Description:**
+
+A self-hosted "second brain" / capture-first PKM. The premise is that the
+bottleneck isn't retrieval — it's the friction of writing things down and
+organizing them. Most PKM tools (Obsidian, Notion, Logseq) assume you'll do
+the organization. I wanted one where I could paste raw thoughts and links
+and have an LLM figure out the structure.
+
+How it works:
 1. Capture text or paste a link with a short note
-2. A background worker (running an LLM of your choice) extracts title,
+2. A background worker calls an LLM (yours — see below) to extract title,
    summary, tags, entities, and a vector embedding
 3. It surfaces connections between captures (continuation, contradiction,
    pattern, same entity in new context)
-4. Natural-language search across everything, with cited sources
+4. Natural-language search over everything, with cited sources
 
-**Self-hosting:**
-- Docker Compose: Next.js + worker (pg-boss) + Postgres 16 (pgvector) + MinIO
-- BYO model: Anthropic, OpenAI, or fully local with Ollama. Mix per task.
-- PWA with offline capture queue — installable on the home screen
-- MCP server built-in (plug into Claude Desktop / Cursor)
-- Plain JSON/Markdown export — if Lectio disappears tomorrow, you keep the files
+Features:
+- Bring your own model: Anthropic, OpenAI, or fully local with Ollama.
+  Mix providers per task (e.g. cloud for enrichment, local for embeddings).
+- PWA with offline capture queue — installable on a phone home screen,
+  syncs when you reconnect.
+- MCP server built-in — plug Lectio into Claude Desktop / Cursor / any
+  MCP client and query your notes from your AI coding environment.
+- Plain JSON + Markdown ZIP export. If Lectio disappears tomorrow, you
+  keep readable files. Forever.
+- Hybrid lexical + semantic search with streaming answers and citations.
+- Tag-filtered search; daily cost cap env var; full backup/restore guide.
 
-**Up front about what doesn't work yet** (because someone will ask):
+Honest about what doesn't work yet (because someone will ask):
 - Pasting a link enriches the *text you write*, not the page behind it.
-  Automatic URL fetch + readability is on the roadmap. For now, drop a
-  sentence of context with the link.
+  Automatic URL fetch + readability is on the roadmap.
 - Voice/image capture code is in the repo but not validated yet — I'm not
   claiming them as features.
 - Solo-maintained alpha. No multi-user, no rich-text editor, no weekly
-  digest. The [full ship checklist is in the README](https://github.com/ricalamino/lectio#ship-checklist).
+  digest. Full ship checklist is in the README.
 
-**Repo (with screenshots + demo gif):** https://github.com/ricalamino/lectio
+**Deployment:**
+
+Released and ready to self-host. MIT license.
+
+Stack: Docker Compose with Next.js (app) + pg-boss (worker) + PostgreSQL
+16 with pgvector + MinIO for object storage. Single command to bring up:
+
+```
+git clone https://github.com/ricalamino/lectio
+cd lectio
+cp .env.example .env
+# Set ADMIN_PASSWORD, AUTH_SECRET, and at least one LLM key
+docker compose up -d
+```
+
+Then open `http://localhost:3000` and log in.
+
+Docs in-repo:
+- README has Quick Start, minimum `.env` examples for both Anthropic and
+  fully-local Ollama setups, and a provider support table
+- [docs/architecture.md](https://github.com/ricalamino/lectio/blob/main/docs/architecture.md) — package layout + data flow diagram
+- [docs/cost-guide.md](https://github.com/ricalamino/lectio/blob/main/docs/cost-guide.md) — per-capture cost estimates per provider/model
+- [docs/backup-restore.md](https://github.com/ricalamino/lectio/blob/main/docs/backup-restore.md) — how to back up Postgres + MinIO
+- [docs/troubleshooting.md](https://github.com/ricalamino/lectio/blob/main/docs/troubleshooting.md) — common spinning-up issues
+
+**AI Involvement:**
+
+Two layers, being explicit about both:
+
+1. **The app uses LLMs at runtime** — that's the whole point. Enrichment
+   and search both call whichever provider you configure. With Ollama it's
+   100% local; with Anthropic/OpenAI the only outbound traffic is to those
+   APIs. No telemetry, no analytics, no accounts.
+
+2. **The app was largely built with Claude Code** (Anthropic's CLI agent)
+   over the last week. I designed the architecture, made the product
+   decisions, wrote prompts, and pushed back when the model over-engineered
+   — but a lot of the boilerplate (Drizzle migrations, the MCP server, the
+   PWA service worker, provider abstractions) was written by Claude. The
+   repo is structured cleanly enough that I'd point at it as a working
+   example of what vibe-coding produces when you keep the agent on a
+   tight leash.
 
 I'd love feedback on the self-hosting story specifically — is the docker
-compose stack the right shape? Should the worker be optional? Anything you
-hit while spinning it up I want to know about.
+compose stack the right shape? Should the worker be optional for people
+who don't want async? Anything you hit while spinning it up, I want to
+know about. Happy to answer architecture questions in the thread.
 
 ---
 

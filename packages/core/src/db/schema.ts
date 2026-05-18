@@ -146,11 +146,31 @@ export const feedback = pgTable(
   }),
 );
 
+// User-configurable quick-access tabs shown on the inbox. Each tab pins a
+// single tag; the inbox filters captures whose enrichment includes that tag.
+// Single-tenant — no user_id needed while auth is a single admin login.
+export const inboxTabs = pgTable(
+  "inbox_tabs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tag: text("tag").notNull(),
+    label: text("label"),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tagUnique: uniqueIndex("inbox_tabs_tag_unique").on(t.tag),
+    positionIdx: index("inbox_tabs_position_idx").on(t.position),
+  }),
+);
+
 export type Capture = typeof captures.$inferSelect;
 export type NewCapture = typeof captures.$inferInsert;
 export type Enrichment = typeof enrichments.$inferSelect;
 export type NewEnrichment = typeof enrichments.$inferInsert;
 export type Feedback = typeof feedback.$inferSelect;
 export type NewFeedback = typeof feedback.$inferInsert;
+export type InboxTab = typeof inboxTabs.$inferSelect;
+export type NewInboxTab = typeof inboxTabs.$inferInsert;
 
 export const enableExtensions = sql`CREATE EXTENSION IF NOT EXISTS vector;`;

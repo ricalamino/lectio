@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchAnswerText } from "@/components/search-answer";
@@ -54,6 +54,9 @@ export default function SearchPage() {
     });
   }
 
+  const runRef = useRef<((signal?: AbortSignal) => Promise<void>) | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   async function saveAsCapture() {
     if (!answer || !q.trim()) return;
     setSaveState("saving");
@@ -71,60 +74,101 @@ export default function SearchPage() {
     }
   }
 
-  async function run() {
-    if (!q.trim() && selectedTags.size === 0) return;
-    setLoading(true);
-    setAnswer(null);
-    setHits(null);
-    setCited(null);
-    setSaveState("idle");
-    try {
-      const params = new URLSearchParams();
-      if (q.trim()) params.set("q", q.trim());
-      for (const tag of selectedTags) params.append("tag", tag);
-      const res = await fetch(`/api/search?${params.toString()}`);
-      const ct = res.headers.get("content-type") ?? "";
-      if (!ct.includes("text/event-stream")) {
-        // Fallback for empty-result non-streaming responses
-        const data = (await res.json()) as { answer: string | null; hits: Hit[]; cited?: Hit[] };
-        setAnswer(data.answer);
-        setHits(data.hits);
-        setCited(data.cited ?? []);
+  const run = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!q.trim() && selectedTags.size === 0) {
+        setAnswer(null);
+        setHits(null);
+        setCited(null);
         return;
       }
-      if (!res.body) return;
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          const dataLine = line.startsWith("data: ") ? line.slice(6) : line.trim();
-          if (!dataLine) continue;
-          try {
-            const event = JSON.parse(dataLine) as
-              | { type: "chunk"; text: string }
-              | { type: "done"; answer: string; hits: Hit[]; cited: Hit[] }
-              | { type: "error" };
-            if (event.type === "chunk") {
-              setAnswer((prev) => (prev ?? "") + event.text);
-            } else if (event.type === "done") {
-              setAnswer(event.answer);
-              setHits(event.hits);
-              setCited(event.cited);
+      setLoading(true);
+      setAnswer(null);
+      setHits(null);
+      setCited(null);
+      setSaveState("idle");
+      try {
+        const params = new URLSearchParams();
+        if (q.trim()) params.set("q", q.trim());
+        for (const tag of selectedTags) params.append("tag", tag);
+        const res = await fetch(`/api/search?${params.toString()}`, { signal });
+        const ct = res.headers.get("content-type") ?? "";
+        if (!ct.includes("text/event-stream")) {
+          const data = (await res.json()) as { answer: string | null; hits: Hit[]; cited?: Hit[] };
+          if (signal?.aborted) return;
+          setAnswer(data.answer);
+          setHits(data.hits);
+          setCited(data.cited ?? []);
+          return;
+        }
+        if (!res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (signal?.aborted) {
+            await reader.cancel();
+            return;
+          }
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            const dataLine = line.startsWith("data: ") ? line.slice(6) : line.trim();
+            if (!dataLine) continue;
+            try {
+              const event = JSON.parse(dataLine) as
+                | { type: "chunk"; text: string }
+                | { type: "done"; answer: string; hits: Hit[]; cited: Hit[] }
+                | { type: "error" };
+              if (event.type === "chunk") {
+                setAnswer((prev) => (prev ?? "") + event.text);
+              } else if (event.type === "done") {
+                setAnswer(event.answer);
+                setHits(event.hits);
+                setCited(event.cited);
+              }
+            } catch {
+              // skip malformed events
             }
-          } catch {
-            // skip malformed events
           }
         }
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+        throw err;
+      } finally {
+        if (!signal?.aborted) setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
+    },
+    [q, selectedTags],
+  );
+
+  useEffect(() => {
+    runRef.current = run;
+  }, [run]);
+
+  // Auto-run whenever the tag selection changes. Cancels any in-flight
+  // request so rapid toggles don't pile up streaming responses.
+  useEffect(() => {
+    if (selectedTags.size === 0 && !q.trim()) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    void run(controller.signal);
+    return () => controller.abort();
+    // Intentionally not depending on `q` — typing in the input shouldn't
+    // re-fire on every keystroke. Tag toggles + Enter/Search button cover
+    // text input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTags]);
+
+  function runManual() {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    void run(controller.signal);
   }
 
   return (
@@ -134,11 +178,11 @@ export default function SearchPage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && run()}
+          onKeyDown={(e) => e.key === "Enter" && runManual()}
           placeholder="Ask anything…"
           className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
-        <Button onClick={run} disabled={loading}>
+        <Button onClick={runManual} disabled={loading}>
           {loading ? "…" : "Search"}
         </Button>
       </div>
@@ -189,24 +233,26 @@ export default function SearchPage() {
           <h2 className="text-sm font-medium text-muted-foreground">Cited sources</h2>
           <ul className="grid gap-2 sm:grid-cols-2">
             {cited.map((h) => (
-              <li
-                key={h.id}
-                className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{h.kind}</span>
-                  <code className="text-[10px] text-muted-foreground">{h.id.slice(0, 8)}</code>
-                </div>
-                {h.title ? <p className="mt-1 font-medium leading-snug">{h.title}</p> : null}
-                {h.summary ? (
-                  <p className="mt-1 line-clamp-3 text-muted-foreground leading-snug">{h.summary}</p>
-                ) : h.rawText ? (
-                  <p className="mt-1 line-clamp-3 text-muted-foreground leading-snug">{h.rawText}</p>
-                ) : null}
+              <li key={h.id}>
+                <Link
+                  href={`/inbox/${h.id}`}
+                  className="block rounded-md border border-border bg-muted/30 px-3 py-2 text-sm transition-colors hover:bg-muted/60"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">{h.kind}</span>
+                    <code className="text-[10px] text-muted-foreground">{h.id.slice(0, 8)}</code>
+                  </div>
+                  {h.title ? <p className="mt-1 font-medium leading-snug">{h.title}</p> : null}
+                  {h.summary ? (
+                    <p className="mt-1 line-clamp-3 text-muted-foreground leading-snug">{h.summary}</p>
+                  ) : h.rawText ? (
+                    <p className="mt-1 line-clamp-3 text-muted-foreground leading-snug">{h.rawText}</p>
+                  ) : null}
+                </Link>
                 {h.mediaKey ? (
                   <Link
                     href={`/api/captures/${h.id}/media`}
-                    className="mt-2 inline-block text-xs text-primary underline-offset-4 hover:underline"
+                    className="mt-1 inline-block px-3 text-xs text-primary underline-offset-4 hover:underline"
                     prefetch={false}
                   >
                     Open attachment
@@ -228,13 +274,15 @@ export default function SearchPage() {
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">
             {hits.map((h) => (
-              <li key={h.id} className="px-4 py-3 text-sm">
-                <span className="text-muted-foreground text-xs">{h.kind}</span>
-                {h.title ? <p className="mt-1 font-medium">{h.title}</p> : null}
-                <p className="mt-1">{h.rawText}</p>
-                {h.summary ? (
-                  <p className="mt-1 text-muted-foreground">{h.summary}</p>
-                ) : null}
+              <li key={h.id} className="text-sm">
+                <Link href={`/inbox/${h.id}`} className="block px-4 py-3 hover:bg-muted/40">
+                  <span className="text-muted-foreground text-xs">{h.kind}</span>
+                  {h.title ? <p className="mt-1 font-medium">{h.title}</p> : null}
+                  {h.rawText ? <p className="mt-1 line-clamp-3">{h.rawText}</p> : null}
+                  {h.summary ? (
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">{h.summary}</p>
+                  ) : null}
+                </Link>
               </li>
             ))}
           </ul>

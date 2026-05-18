@@ -1,20 +1,24 @@
 import Link from "next/link";
-import { and, desc, eq, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { captures, enrichments } from "@lectio/core/db/schema";
-import { getCaptureStatusCounts } from "@/lib/capture-status-counts";
-import { InboxFilterTabs, type InboxFilterKind } from "@/components/inbox-filter-tabs";
+import { captures, enrichments, inboxTabs } from "@lectio/core/db/schema";
+import {
+  getCaptureStatusCounts,
+  getTagCaptureCounts,
+} from "@/lib/capture-status-counts";
+import { InboxFilterTabs } from "@/components/inbox-filter-tabs";
 import { RetryAllFailedEnrichment } from "@/components/retry-all-failed-enrichment";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
 
-type FilterKind = InboxFilterKind;
+type StatusFilter = "all" | "processing" | "failed";
 
 interface SearchParams {
   cursor?: string;
   filter?: string;
+  tab?: string;
 }
 
 interface Cursor {
@@ -37,7 +41,7 @@ function decodeCursor(raw: string | undefined): Cursor | null {
   }
 }
 
-function parseFilter(raw: string | undefined): FilterKind {
+function parseStatusFilter(raw: string | undefined): StatusFilter {
   if (raw === "processing" || raw === "failed") return raw;
   return "all";
 }
@@ -67,7 +71,7 @@ function StatusPill({ status, kind }: { status: string; kind: string }) {
   );
 }
 
-function filterClause(filter: FilterKind): SQL | undefined {
+function statusClause(filter: StatusFilter): SQL | undefined {
   if (filter === "processing") {
     return or(eq(captures.status, "pending"), eq(captures.status, "enriching"));
   }
@@ -83,7 +87,8 @@ export default async function InboxPage({
   searchParams?: SearchParams;
 }) {
   const cursor = decodeCursor(searchParams?.cursor);
-  const filter = parseFilter(searchParams?.filter);
+  const statusFilter = parseStatusFilter(searchParams?.filter);
+  const tab = searchParams?.tab?.trim() || null;
 
   const cursorClause: SQL | undefined = cursor
     ? or(
@@ -95,14 +100,24 @@ export default async function InboxPage({
       )
     : undefined;
 
-  const statusFilter = filterClause(filter);
-  const whereClause =
-    cursorClause && statusFilter
-      ? and(cursorClause, statusFilter)
-      : cursorClause ?? statusFilter;
+  const tagClause: SQL | undefined = tab
+    ? sql`${enrichments.tags} ? ${tab}`
+    : undefined;
 
-  const [rows, statusCounts] = await Promise.all([
-    db()
+  const status = statusClause(statusFilter);
+  const whereParts = [cursorClause, status, tagClause].filter(
+    (c): c is SQL => Boolean(c),
+  );
+  const whereClause =
+    whereParts.length === 0
+      ? undefined
+      : whereParts.length === 1
+      ? whereParts[0]
+      : and(...whereParts);
+
+  const database = db();
+  const [rows, statusCounts, tabs] = await Promise.all([
+    database
       .select({
         id: captures.id,
         kind: captures.kind,
@@ -118,8 +133,17 @@ export default async function InboxPage({
       .where(whereClause)
       .orderBy(desc(captures.capturedAt), desc(captures.id))
       .limit(PAGE_SIZE + 1),
-    getCaptureStatusCounts(db()),
+    getCaptureStatusCounts(database),
+    database
+      .select()
+      .from(inboxTabs)
+      .orderBy(asc(inboxTabs.position), asc(inboxTabs.createdAt)),
   ]);
+
+  const tagCounts = await getTagCaptureCounts(
+    database,
+    tabs.map((t) => t.tag),
+  );
 
   const hasNext = rows.length > PAGE_SIZE;
   const visible = hasNext ? rows.slice(0, PAGE_SIZE) : rows;
@@ -129,14 +153,55 @@ export default async function InboxPage({
       ? encodeCursor({ capturedAt: last.capturedAt.toISOString(), id: last.id })
       : null;
 
+  const baseQuery = new URLSearchParams();
+  if (tab) baseQuery.set("tab", tab);
+  if (statusFilter !== "all") baseQuery.set("filter", statusFilter);
+  const baseHref = baseQuery.toString() ? `/inbox?${baseQuery.toString()}` : "/inbox";
+  const olderQuery = new URLSearchParams(baseQuery);
+  if (nextCursor) olderQuery.set("cursor", nextCursor);
+
+  const emptyState = (() => {
+    if (statusFilter === "failed") {
+      return {
+        title: "Nothing failed.",
+        body: "All captures enriched successfully.",
+      };
+    }
+    if (statusFilter === "processing") {
+      return {
+        title: "All caught up.",
+        body: "No captures are being processed right now.",
+      };
+    }
+    if (tab) {
+      return {
+        title: `No captures tagged #${tab}.`,
+        body: "As you capture more, items matching this tag will appear here.",
+      };
+    }
+    return {
+      title: "Your inbox is empty.",
+      body: null as null | string,
+    };
+  })();
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
 
-      <InboxFilterTabs activeFilter={filter} initialCounts={statusCounts} />
+      <InboxFilterTabs
+        activeStatus={statusFilter}
+        activeTab={tab}
+        initialCounts={statusCounts}
+        initialTabs={tabs.map((t) => ({
+          id: t.id,
+          tag: t.tag,
+          label: t.label,
+          count: tagCounts[t.tag] ?? 0,
+        }))}
+      />
 
-      {filter === "failed" ? (
+      {statusFilter === "failed" ? (
         <div className="flex justify-end">
           <RetryAllFailedEnrichment failedCount={statusCounts.failed} />
         </div>
@@ -144,31 +209,17 @@ export default async function InboxPage({
 
       {visible.length === 0 ? (
         <div className="rounded-md border border-dashed border-border px-6 py-12 text-center">
-          {filter === "failed" ? (
-            <>
-              <p className="text-sm font-medium">Nothing failed.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                All captures enriched successfully.
-              </p>
-            </>
-          ) : filter === "processing" ? (
-            <>
-              <p className="text-sm font-medium">All caught up.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                No captures are being processed right now.
-              </p>
-            </>
+          <p className="text-sm font-medium">{emptyState.title}</p>
+          {emptyState.body ? (
+            <p className="mt-1 text-sm text-muted-foreground">{emptyState.body}</p>
           ) : (
-            <>
-              <p className="text-sm font-medium">Your inbox is empty.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Paste a link, jot a thought, or share from any app —{" "}
-                <Link href="/capture" className="underline underline-offset-4 hover:text-foreground">
-                  start capturing
-                </Link>
-                .
-              </p>
-            </>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Paste a link, jot a thought, or share from any app —{" "}
+              <Link href="/capture" className="underline underline-offset-4 hover:text-foreground">
+                start capturing
+              </Link>
+              .
+            </p>
           )}
         </div>
       ) : (
@@ -189,13 +240,13 @@ export default async function InboxPage({
                 ) : null}
                 {Array.isArray(c.tags) && c.tags.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {(c.tags as string[]).slice(0, 4).map((tag) => (
+                    {(c.tags as string[]).slice(0, 4).map((t) => (
                       <span
-                        key={tag}
+                        key={t}
                         className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
                       >
                         <span className="text-muted-foreground/50">#</span>
-                        {tag}
+                        {t}
                       </span>
                     ))}
                   </div>
@@ -207,10 +258,7 @@ export default async function InboxPage({
       )}
       <div className="flex items-center justify-between text-sm">
         {cursor ? (
-          <Link
-            href={filter === "all" ? "/inbox" : `/inbox?filter=${filter}`}
-            className="text-muted-foreground hover:text-foreground underline"
-          >
+          <Link href={baseHref} className="text-muted-foreground hover:text-foreground underline">
             ← Newest
           </Link>
         ) : (
@@ -218,7 +266,7 @@ export default async function InboxPage({
         )}
         {nextCursor ? (
           <Link
-            href={`/inbox?cursor=${nextCursor}${filter !== "all" ? `&filter=${filter}` : ""}`}
+            href={`/inbox?${olderQuery.toString()}`}
             className="text-muted-foreground hover:text-foreground underline"
           >
             Older →
