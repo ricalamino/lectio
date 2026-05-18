@@ -172,7 +172,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
       <div className="flex gap-2">
         <input

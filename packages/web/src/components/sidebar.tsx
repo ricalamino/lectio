@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookMarked, FileDown, FolderInput, Inbox, LogOut, Menu, Plus, Search } from "lucide-react";
+import { BookMarked, Calendar, FileDown, FolderInput, Inbox, LogOut, Menu, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 const items = [
   { href: "/capture", label: "Capture", icon: Plus },
   { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/search", label: "Search", icon: Search },
   { href: "/import", label: "Import", icon: FolderInput },
   { href: "/export", label: "Export", icon: FileDown },

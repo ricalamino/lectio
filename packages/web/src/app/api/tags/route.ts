@@ -15,7 +15,8 @@ export async function GET() {
   const rows = (await db().execute(sql`
     select tag, count(*)::int as count
     from ${enrichments}, jsonb_array_elements_text(${enrichments.tags}) as tag
-    where jsonb_typeof(${enrichments.tags}) = 'array'
+    where ${enrichments.isCurrent}
+      and jsonb_typeof(${enrichments.tags}) = 'array'
     group by tag
     order by count desc, tag asc
     limit 50

@@ -7,6 +7,7 @@ import {
   getTagCaptureCounts,
 } from "@/lib/capture-status-counts";
 import { InboxFilterTabs } from "@/components/inbox-filter-tabs";
+import { InboxRow } from "@/components/inbox-row";
 import { RetryAllFailedEnrichment } from "@/components/retry-all-failed-enrichment";
 
 export const dynamic = "force-dynamic";
@@ -129,7 +130,10 @@ export default async function InboxPage({
         tags: enrichments.tags,
       })
       .from(captures)
-      .leftJoin(enrichments, eq(enrichments.captureId, captures.id))
+      .leftJoin(
+        enrichments,
+        and(eq(enrichments.captureId, captures.id), eq(enrichments.isCurrent, true)),
+      )
       .where(whereClause)
       .orderBy(desc(captures.capturedAt), desc(captures.id))
       .limit(PAGE_SIZE + 1),
@@ -225,8 +229,8 @@ export default async function InboxPage({
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {visible.map((c) => (
-            <li key={c.id} className="px-4 py-3 text-sm">
-              <Link href={`/inbox/${c.id}`} className="block hover:bg-muted/40">
+            <li key={c.id} className="text-sm">
+              <InboxRow captureId={c.id}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium leading-snug">
                     {c.title ?? c.rawText?.slice(0, 80) ?? "Untitled capture"}
@@ -251,7 +255,7 @@ export default async function InboxPage({
                     ))}
                   </div>
                 ) : null}
-              </Link>
+              </InboxRow>
             </li>
           ))}
         </ul>

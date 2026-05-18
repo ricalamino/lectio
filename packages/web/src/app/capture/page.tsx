@@ -131,7 +131,7 @@ export default function CapturePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Capture</h1>
       {pending.length > 0 ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">

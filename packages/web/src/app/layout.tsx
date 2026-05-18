@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthSessionProvider>
           <Sidebar />
           <main className="md:pl-64">
-            <div className="mx-auto max-w-3xl px-4 pt-16 pb-12 md:pt-8">{children}</div>
+            <div className="px-4 pt-16 pb-12 md:pt-8">{children}</div>
           </main>
           <EnrichmentProgress />
           <SetupNotice />

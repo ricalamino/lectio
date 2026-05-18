@@ -6,6 +6,8 @@ import {
   text,
   jsonb,
   timestamp,
+  date,
+  boolean,
   integer,
   index,
   uniqueIndex,
@@ -107,6 +109,14 @@ export const enrichments = pgTable(
     captureId: uuid("capture_id")
       .notNull()
       .references(() => captures.id, { onDelete: "cascade" }),
+    /**
+     * Monotonic version per capture. Version 1 is the initial enrichment;
+     * each addendum-triggered re-enrichment writes a new row with version+1.
+     * Older rows are kept for history; only one row per capture has
+     * `isCurrent = true` (enforced by partial unique index in migration 0006).
+     */
+    version: integer("version").notNull().default(1),
+    isCurrent: boolean("is_current").notNull().default(true),
     title: text("title").notNull(),
     summary: text("summary").notNull(),
     tags: jsonb("tags").$type<string[]>().notNull().default([]),
@@ -116,6 +126,14 @@ export const enrichments = pgTable(
     // a schema migration. The prompt's allowed values are documented in
     // packages/core/src/prompts/enrichment.ts.
     contentType: text("content_type").notNull(),
+    /**
+     * Calendar anchor. Resolved from the enrichment payload's
+     * `entities.dates` / `suggested_action.when` using the capture's
+     * `capturedAt` as the relative-date anchor. Falls back to the date of
+     * `capturedAt` when no explicit date is referenced — so every enriched
+     * capture lands on exactly one day in the calendar view.
+     */
+    referenceDate: date("reference_date"),
     transcript: text("transcript"),
     embedding: vector("embedding", { dimensions: 1536 }),
     modelProvider: text("model_provider").notNull(),
@@ -125,8 +143,34 @@ export const enrichments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    captureUnique: uniqueIndex("enrichments_capture_id_unique").on(t.captureId),
+    // The "one current enrichment per capture" guarantee is enforced by a
+    // partial unique index on (capture_id) WHERE is_current — see migration
+    // 0006. Drizzle's column API does not express partial indexes, so it
+    // lives only in SQL.
     contentTypeIdx: index("enrichments_content_type_idx").on(t.contentType),
+    referenceDateIdx: index("enrichments_reference_date_idx").on(t.referenceDate),
+    captureVersionIdx: index("enrichments_capture_version_idx").on(t.captureId, t.version.desc()),
+  }),
+);
+
+/**
+ * Human-authored complementations to a capture. Append-only: each addendum is
+ * a note added after the initial capture. Adding one re-enqueues enrichment
+ * over the original raw text plus all addendums in chronological order.
+ * Text-only for now.
+ */
+export const captureAddendums = pgTable(
+  "capture_addendums",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    captureId: uuid("capture_id")
+      .notNull()
+      .references(() => captures.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    captureIdx: index("capture_addendums_capture_idx").on(t.captureId, t.createdAt),
   }),
 );
 
@@ -172,5 +216,7 @@ export type Feedback = typeof feedback.$inferSelect;
 export type NewFeedback = typeof feedback.$inferInsert;
 export type InboxTab = typeof inboxTabs.$inferSelect;
 export type NewInboxTab = typeof inboxTabs.$inferInsert;
+export type CaptureAddendum = typeof captureAddendums.$inferSelect;
+export type NewCaptureAddendum = typeof captureAddendums.$inferInsert;
 
 export const enableExtensions = sql`CREATE EXTENSION IF NOT EXISTS vector;`;

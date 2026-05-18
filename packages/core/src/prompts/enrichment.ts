@@ -16,6 +16,13 @@ captured (without bothering to organize it) and return
 structured metadata that makes the capture **findable and
 connectable** later.
 
+The user may also attach **addendums** — short notes added after
+the original capture to clarify, correct, or extend it. When
+addendums are present, treat the capture and its addendums as a
+single evolving thought: re-synthesize the title, summary, tags
+and entities to reflect the combined picture. Later addendums
+take precedence over earlier text when they conflict.
+
 ## Principles
 
 1. **Think like the user who will search for this in 3 months.**
@@ -327,9 +334,33 @@ export const enrichmentOutputSchema = z.preprocess(
 
 export type EnrichmentMediaType = "text" | "audio" | "image" | "link";
 
+export interface EnrichmentAddendumInput {
+  body: string;
+  createdAt: Date;
+}
+
+function formatAddendumTimestamp(date: Date): string {
+  // YYYY-MM-DD HH:MM in UTC — stable, readable, no timezone surprises in
+  // the model's view. The model doesn't need second-level precision.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const y = date.getUTCFullYear();
+  const mo = pad(date.getUTCMonth() + 1);
+  const d = pad(date.getUTCDate());
+  const h = pad(date.getUTCHours());
+  const mi = pad(date.getUTCMinutes());
+  return `${y}-${mo}-${d} ${h}:${mi} UTC`;
+}
+
 export function buildEnrichmentUserMessage(params: {
   rawContent: string;
   mediaType: EnrichmentMediaType;
+  addendums?: EnrichmentAddendumInput[];
 }): string {
-  return `[type: ${params.mediaType}]\n\n${params.rawContent}`;
+  const head = `[type: ${params.mediaType}]\n\n${params.rawContent}`;
+  const addendums = params.addendums ?? [];
+  if (addendums.length === 0) return head;
+  const blocks = addendums
+    .map((a) => `--- Addendum (${formatAddendumTimestamp(a.createdAt)}) ---\n${a.body}`)
+    .join("\n\n");
+  return `${head}\n\n${blocks}`;
 }

@@ -121,7 +121,10 @@ async function loadLexicalCandidates(q: string, tags: string[]): Promise<SearchH
       suggestedAction: enrichments.suggestedAction,
     })
     .from(captures)
-    .leftJoin(enrichments, eq(enrichments.captureId, captures.id))
+    .leftJoin(
+      enrichments,
+      and(eq(enrichments.captureId, captures.id), eq(enrichments.isCurrent, true)),
+    )
     .where(where)
     .orderBy(desc(captures.capturedAt))
     .limit(24);
@@ -135,8 +138,8 @@ async function loadVectorCandidates(
   const vector = `[${queryEmbedding.join(",")}]`;
   const tagPredicate = tagsContainAll(tags);
   const where = tagPredicate
-    ? and(isNotNull(enrichments.embedding), tagPredicate)
-    : isNotNull(enrichments.embedding);
+    ? and(isNotNull(enrichments.embedding), eq(enrichments.isCurrent, true), tagPredicate)
+    : and(isNotNull(enrichments.embedding), eq(enrichments.isCurrent, true));
 
   return db()
     .select({
@@ -195,7 +198,7 @@ async function loadLexicalByTagsOnly(tags: string[]): Promise<SearchHitRow[]> {
     })
     .from(captures)
     .innerJoin(enrichments, eq(enrichments.captureId, captures.id))
-    .where(tagPredicate)
+    .where(and(eq(enrichments.isCurrent, true), tagPredicate))
     .orderBy(desc(captures.capturedAt))
     .limit(50);
 }

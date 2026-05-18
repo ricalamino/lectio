@@ -1,7 +1,7 @@
-import { eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { Database } from "@lectio/core/db";
 import type { Capture } from "@lectio/core/db/schema";
-import { captures, enrichments } from "@lectio/core/db/schema";
+import { captureAddendums, captures, enrichments } from "@lectio/core/db/schema";
 import { ocrImageOpenAI } from "@lectio/core/integrations/openai-media";
 import { extractPdfText } from "@lectio/core/integrations/pdf";
 import { transcribeAudio, type TranscribeConfig } from "@lectio/core/integrations/transcribe";
@@ -11,6 +11,8 @@ import {
   ENRICHMENT_SYSTEM_PROMPT,
   buildEnrichmentUserMessage,
   enrichmentOutputSchema,
+  resolveReferenceDate,
+  type EnrichmentAddendumInput,
   type EnrichmentMediaType,
 } from "@lectio/core/prompts";
 import type { EnrichJob } from "../jobs.js";
@@ -182,14 +184,15 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<b
     .where(eq(captures.id, data.captureId));
   if (!capture) return false;
 
-  // Idempotency guard: if the capture is already enriched and an enrichment
-  // row exists, skip. Re-enrich endpoints reset status to 'pending' before
-  // publishing, so an explicit user-triggered re-enrich is not blocked here.
+  // Idempotency guard: if the capture is already enriched and a current
+  // enrichment row exists, skip. Re-enrich endpoints (manual retry, new
+  // addendum) reset status to 'pending' before publishing, so they are
+  // not blocked here.
   if (capture.status === "enriched") {
     const [existing] = await deps.db
       .select({ id: enrichments.captureId })
       .from(enrichments)
-      .where(eq(enrichments.captureId, capture.id));
+      .where(and(eq(enrichments.captureId, capture.id), eq(enrichments.isCurrent, true)));
     if (existing) return false;
   }
 
@@ -243,6 +246,16 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<b
       .where(eq(captures.id, capture.id));
   }
 
+  const addendumRows = await deps.db
+    .select({ body: captureAddendums.body, createdAt: captureAddendums.createdAt })
+    .from(captureAddendums)
+    .where(eq(captureAddendums.captureId, capture.id))
+    .orderBy(asc(captureAddendums.createdAt));
+  const addendums: EnrichmentAddendumInput[] = addendumRows.map((a) => ({
+    body: a.body,
+    createdAt: a.createdAt,
+  }));
+
   await deps.db
     .update(captures)
     .set({ status: "enriching", updatedAt: new Date() })
@@ -278,6 +291,7 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<b
           content: buildEnrichmentUserMessage({
             rawContent: resolved.rawContent,
             mediaType: mediaTypeFor(capture.kind),
+            addendums,
           }),
         },
       ],
@@ -286,9 +300,13 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<b
 
     let embedding: number[] | null = null;
     if (deps.embed && deps.models.embed) {
+      const addendumText = addendums.map((a) => a.body).join("\n\n");
+      const embedInput = addendumText
+        ? `${json.data.title}\n\n${json.data.summary}\n\n${resolved.rawContent}\n\n${addendumText}`
+        : `${json.data.title}\n\n${json.data.summary}\n\n${resolved.rawContent}`;
       const embedded = await deps.embed.embed({
         model: deps.models.embed,
-        input: `${json.data.title}\n\n${json.data.summary}\n\n${resolved.rawContent}`,
+        input: embedInput,
       });
       const candidate = embedded.embeddings[0] ?? null;
       if (candidate !== null && candidate.length !== deps.embedDimensions) {
@@ -301,40 +319,45 @@ export async function handleEnrich(data: EnrichJob, deps: EnrichDeps): Promise<b
       }
     }
 
-    await deps.db
-      .insert(enrichments)
-      .values({
+    const referenceDate = resolveReferenceDate(json.data, capture.capturedAt);
+
+    // Versioned write: retire any current enrichment for this capture, then
+    // insert a new row as version+1 / is_current = true. The partial unique
+    // index (capture_id WHERE is_current) requires the demotion to happen
+    // before the insert, so we wrap both in a transaction.
+    await deps.db.transaction(async (tx) => {
+      await tx
+        .update(enrichments)
+        .set({ isCurrent: false })
+        .where(and(eq(enrichments.captureId, capture.id), eq(enrichments.isCurrent, true)));
+
+      const [latest] = await tx
+        .select({ version: enrichments.version })
+        .from(enrichments)
+        .where(eq(enrichments.captureId, capture.id))
+        .orderBy(desc(enrichments.version))
+        .limit(1);
+      const nextVersion = (latest?.version ?? 0) + 1;
+
+      await tx.insert(enrichments).values({
         captureId: capture.id,
+        version: nextVersion,
+        isCurrent: true,
         title: json.data.title,
         summary: json.data.summary,
         tags: json.data.tags,
         entities: json.data.entities,
         suggestedAction: json.data.suggested_action,
         contentType: json.data.content_type,
+        referenceDate,
         transcript: resolved.transcript,
         embedding,
         modelProvider: deps.llm.name satisfies LlmProviderName,
         modelName: json.model,
         tokensIn: json.tokensIn,
         tokensOut: json.tokensOut,
-      })
-      .onConflictDoUpdate({
-        target: enrichments.captureId,
-        set: {
-          title: sql`excluded.title`,
-          summary: sql`excluded.summary`,
-          tags: sql`excluded.tags`,
-          entities: sql`excluded.entities`,
-          suggestedAction: sql`excluded.suggested_action`,
-          contentType: sql`excluded.content_type`,
-          transcript: sql`excluded.transcript`,
-          embedding: sql`excluded.embedding`,
-          modelProvider: sql`excluded.model_provider`,
-          modelName: sql`excluded.model_name`,
-          tokensIn: sql`excluded.tokens_in`,
-          tokensOut: sql`excluded.tokens_out`,
-        },
       });
+    });
 
     await deps.db
       .update(captures)

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { captures, enrichments } from "@lectio/core/db/schema";
@@ -28,7 +28,10 @@ export async function GET() {
       suggestedAction: enrichments.suggestedAction,
     })
     .from(captures)
-    .leftJoin(enrichments, eq(enrichments.captureId, captures.id))
+    .leftJoin(
+      enrichments,
+      and(eq(enrichments.captureId, captures.id), eq(enrichments.isCurrent, true)),
+    )
     .orderBy(desc(captures.capturedAt))
     .limit(MAX_EXPORT);
 

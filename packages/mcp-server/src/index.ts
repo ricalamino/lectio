@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { createDatabase } from "@lectio/core/db";
 import { captures, enrichments } from "@lectio/core/db/schema";
 
@@ -97,7 +97,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const [enrichment] = await db
         .select()
         .from(enrichments)
-        .where(eq(enrichments.captureId, id));
+        .where(and(eq(enrichments.captureId, id), eq(enrichments.isCurrent, true)));
       return {
         content: [
           { type: "text", text: JSON.stringify({ capture, enrichment }, null, 2) },

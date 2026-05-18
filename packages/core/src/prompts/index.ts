@@ -7,6 +7,7 @@ export {
   enrichmentContentTypeEnum,
   type EnrichmentOutput,
   type EnrichmentMediaType,
+  type EnrichmentAddendumInput,
 } from "./enrichment.js";
 
 export {
@@ -15,3 +16,5 @@ export {
   extractCitationIds,
   type SearchCandidate,
 } from "./search.js";
+
+export { resolveReferenceDate, parseDateExpression } from "./reference-date.js";

@@ -72,7 +72,7 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Import</h1>
       <p className="text-sm text-muted-foreground">
         Max {5000} items per upload. Each imported item is enriched in the background.
