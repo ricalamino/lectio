@@ -95,7 +95,7 @@ export default async function InboxPage({
     ? or(
         lt(captures.capturedAt, new Date(cursor.capturedAt)),
         and(
-          sql`${captures.capturedAt} = ${new Date(cursor.capturedAt)}`,
+          eq(captures.capturedAt, new Date(cursor.capturedAt)),
           lt(captures.id, cursor.id),
         ),
       )

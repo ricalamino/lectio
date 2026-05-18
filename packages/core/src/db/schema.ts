@@ -208,6 +208,32 @@ export const inboxTabs = pgTable(
   }),
 );
 
+// User-pinned items shown on the home Pinned panel and the sidebar
+// shortcut. Polymorphic by `kind`: each row pins either a capture, a tag,
+// or a saved search query — the matching column is filled, the others null
+// (CHECK constraint enforced in migration 0007). Single-tenant for now.
+export const pins = pgTable(
+  "pins",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").notNull().$type<"capture" | "tag" | "search">(),
+    captureId: uuid("capture_id").references(() => captures.id, {
+      onDelete: "cascade",
+    }),
+    tag: text("tag"),
+    searchQuery: text("search_query"),
+    searchLabel: text("search_label"),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    positionIdx: index("pins_position_idx").on(t.position),
+  }),
+);
+
+export type Pin = typeof pins.$inferSelect;
+export type NewPin = typeof pins.$inferInsert;
+
 export type Capture = typeof captures.$inferSelect;
 export type NewCapture = typeof captures.$inferInsert;
 export type Enrichment = typeof enrichments.$inferSelect;

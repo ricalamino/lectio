@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck } from "lucide-react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Bookmark, BookmarkCheck, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchAnswerText } from "@/components/search-answer";
 
@@ -23,14 +24,28 @@ interface TagOption {
 type SaveState = "idle" | "saving" | "saved";
 
 export default function SearchPage() {
-  const [q, setQ] = useState("");
+  return (
+    <Suspense fallback={null}>
+      <SearchPageContent />
+    </Suspense>
+  );
+}
+
+function SearchPageContent() {
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [cited, setCited] = useState<Hit[] | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [tagOptions, setTagOptions] = useState<TagOption[]>([]);
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(
+    () => new Set(searchParams.getAll("tag")),
+  );
+  const [pinnedTags, setPinnedTags] = useState<Set<string>>(new Set());
+  const [pinnedQueries, setPinnedQueries] = useState<Set<string>>(new Set());
+  const [pinningQuery, setPinningQuery] = useState(false);
 
   useEffect(() => {
     let aborted = false;
@@ -44,6 +59,85 @@ export default function SearchPage() {
       aborted = true;
     };
   }, []);
+
+  const refreshPins = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pins");
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        pins: { kind: string; tag: string | null; searchQuery: string | null }[];
+      };
+      const tags = new Set<string>();
+      const queries = new Set<string>();
+      for (const p of data.pins) {
+        if (p.kind === "tag" && p.tag) tags.add(p.tag);
+        if (p.kind === "search" && p.searchQuery) queries.add(p.searchQuery);
+      }
+      setPinnedTags(tags);
+      setPinnedQueries(queries);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPins();
+  }, [refreshPins]);
+
+  async function toggleTagPin(tag: string) {
+    const pinned = pinnedTags.has(tag);
+    const next = new Set(pinnedTags);
+    if (pinned) next.delete(tag);
+    else next.add(tag);
+    setPinnedTags(next);
+    try {
+      if (pinned) {
+        await fetch("/api/pins/by-target", {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "tag", tag }),
+        });
+      } else {
+        await fetch("/api/pins", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "tag", tag }),
+        });
+      }
+    } catch {
+      void refreshPins();
+    }
+  }
+
+  async function toggleQueryPin() {
+    const query = q.trim();
+    if (!query) return;
+    const pinned = pinnedQueries.has(query);
+    setPinningQuery(true);
+    const next = new Set(pinnedQueries);
+    if (pinned) next.delete(query);
+    else next.add(query);
+    setPinnedQueries(next);
+    try {
+      if (pinned) {
+        await fetch("/api/pins/by-target", {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "search", query }),
+        });
+      } else {
+        await fetch("/api/pins", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "search", query }),
+        });
+      }
+    } catch {
+      void refreshPins();
+    } finally {
+      setPinningQuery(false);
+    }
+  }
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) => {
@@ -149,6 +243,18 @@ export default function SearchPage() {
     runRef.current = run;
   }, [run]);
 
+  // Auto-run once on mount when the URL seeds either a query or tags, so
+  // links like /search?tag=x land on results instead of an empty page.
+  useEffect(() => {
+    if (!q.trim() && selectedTags.size === 0) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    void run(controller.signal);
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-run whenever the tag selection changes. Cancels any in-flight
   // request so rapid toggles don't pile up streaming responses.
   useEffect(() => {
@@ -185,26 +291,71 @@ export default function SearchPage() {
         <Button onClick={runManual} disabled={loading}>
           {loading ? "…" : "Search"}
         </Button>
+        {q.trim() ? (
+          <button
+            type="button"
+            onClick={() => void toggleQueryPin()}
+            disabled={pinningQuery}
+            aria-pressed={pinnedQueries.has(q.trim())}
+            aria-label={pinnedQueries.has(q.trim()) ? "Unpin search" : "Pin search"}
+            title={pinnedQueries.has(q.trim()) ? "Unpin search" : "Pin search"}
+            className={
+              "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input transition-colors disabled:opacity-50 " +
+              (pinnedQueries.has(q.trim())
+                ? "text-primary hover:bg-muted"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground")
+            }
+          >
+            <Pin
+              className={
+                "h-4 w-4 " + (pinnedQueries.has(q.trim()) ? "fill-current" : "")
+              }
+            />
+          </button>
+        ) : null}
       </div>
       {tagOptions.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {tagOptions.map(({ tag, count }) => {
             const active = selectedTags.has(tag);
+            const pinned = pinnedTags.has(tag);
             return (
-              <button
+              <span
                 key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
                 className={
-                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                  "inline-flex items-center gap-1 rounded-full border pl-2.5 pr-1 py-0.5 text-xs transition-colors " +
                   (active
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground")
                 }
               >
-                <span>{tag}</span>
-                <span className={active ? "opacity-80" : "opacity-60"}>{count}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  className="inline-flex items-center gap-1"
+                >
+                  <span>{tag}</span>
+                  <span className={active ? "opacity-80" : "opacity-60"}>{count}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void toggleTagPin(tag);
+                  }}
+                  aria-pressed={pinned}
+                  aria-label={pinned ? `Unpin #${tag}` : `Pin #${tag}`}
+                  title={pinned ? `Unpin #${tag}` : `Pin #${tag}`}
+                  className={
+                    "ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors " +
+                    (active
+                      ? "hover:bg-primary-foreground/10"
+                      : "hover:bg-muted")
+                  }
+                >
+                  <Pin className={"h-3 w-3 " + (pinned ? "fill-current" : "")} />
+                </button>
+              </span>
             );
           })}
         </div>

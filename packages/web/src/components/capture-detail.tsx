@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { captureAddendums, captures, enrichments } from "@lectio/core/db/schema";
+import { captureAddendums, captures, enrichments, pins } from "@lectio/core/db/schema";
 import { RetryEnrichButton } from "@/components/retry-enrich-button";
 import { DeleteCaptureButton, EditRawText } from "@/components/capture-actions";
 import { AddAddendum } from "@/components/add-addendum";
 import { CloseDetailPane } from "@/components/close-detail-pane";
+import { CaptureTags } from "@/components/capture-tags";
+import { PinToggleButton } from "@/components/pin-toggle-button";
 
 interface CaptureDetailProps {
   id: string;
@@ -39,6 +41,13 @@ export async function CaptureDetail({ id, variant = "page" }: CaptureDetailProps
     .where(eq(captureAddendums.captureId, id))
     .orderBy(asc(captureAddendums.createdAt));
 
+  const [pinned] = await db()
+    .select({ id: pins.id })
+    .from(pins)
+    .where(and(eq(pins.kind, "capture"), eq(pins.captureId, id)))
+    .limit(1);
+  const isPinned = Boolean(pinned);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
@@ -58,6 +67,11 @@ export async function CaptureDetail({ id, variant = "page" }: CaptureDetailProps
               Attachment
             </a>
           ) : null}
+          <PinToggleButton
+            target={{ kind: "capture", captureId: capture.id }}
+            initialPinned={isPinned}
+            size="sm"
+          />
           <DeleteCaptureButton captureId={capture.id} />
           {variant === "pane" ? <CloseDetailPane /> : null}
         </div>
@@ -155,11 +169,8 @@ export async function CaptureDetail({ id, variant = "page" }: CaptureDetailProps
         </section>
       ) : null}
 
-      {enrichment?.tags && enrichment.tags.length > 0 ? (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Tags</h2>
-          <p className="text-sm">{enrichment.tags.join(", ")}</p>
-        </section>
+      {enrichment ? (
+        <CaptureTags captureId={capture.id} initialTags={enrichment.tags ?? []} />
       ) : null}
     </div>
   );

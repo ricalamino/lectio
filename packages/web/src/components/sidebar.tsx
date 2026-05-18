@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookMarked, Calendar, FileDown, FolderInput, Inbox, LogOut, Menu, Plus, Search } from "lucide-react";
+import { BookMarked, Calendar, FileDown, FolderInput, Inbox, LogOut, Menu, Pin, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 const items = [
+  { href: "/", label: "Pinned", icon: Pin, exact: true },
   { href: "/capture", label: "Capture", icon: Plus },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/calendar", label: "Calendar", icon: Calendar },
@@ -40,7 +41,7 @@ export function Sidebar() {
         )}
       >
         <Link
-          href="/inbox"
+          href="/"
           className="flex h-16 items-center gap-2 px-6 text-lg font-semibold tracking-tight"
         >
           <BookMarked className="h-5 w-5 text-primary" />
@@ -50,7 +51,10 @@ export function Sidebar() {
         </Link>
         <nav className="flex flex-col gap-1 px-3">
           {items.map((item) => {
-            const active = pathname?.startsWith(item.href);
+            const active =
+              "exact" in item && item.exact
+                ? pathname === item.href
+                : pathname?.startsWith(item.href);
             const Icon = item.icon;
             return (
               <Link
